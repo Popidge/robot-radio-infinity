@@ -1,0 +1,11 @@
+{
+  "name": "robot-radio-infinity",
+  "private": true,
+  "packageManager": "pnpm@10.23.0",
+  "scripts": {
+    "dev": "pnpm --parallel --filter @robot-radio/server --filter @robot-radio/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r typecheck"
+  }
+}

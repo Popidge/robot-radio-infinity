@@ -1,0 +1,96 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Manrope:wght@400;500;600;700&display=swap");
+
+:root {
+  color: #e8edf0;
+  background: #090c0e;
+  font-family: "Manrope", sans-serif;
+  font-synthesis: none;
+  --panel: rgba(20, 26, 29, 0.88);
+  --border: rgba(150, 183, 191, 0.16);
+  --muted: #87969b;
+  --mint: #74f2bf;
+  --amber: #ffc86b;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 15% -10%, rgba(44, 124, 101, 0.2), transparent 35%),
+    linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px);
+  background-size: auto, 38px 38px, 38px 38px;
+}
+
+button, input { font: inherit; }
+button {
+  color: #d7dfe2;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #151b1e;
+  padding: 9px 13px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { border-color: #66838b; background: #1c2528; }
+button:disabled { opacity: 0.38; cursor: not-allowed; }
+button.primary { color: #07110d; border-color: var(--mint); background: var(--mint); font-weight: 700; }
+
+main { width: min(1280px, calc(100% - 36px)); margin: 0 auto; padding: 36px 0 24px; position: relative; }
+.panel { border: 1px solid var(--border); border-radius: 13px; background: var(--panel); box-shadow: 0 20px 60px rgba(0,0,0,.22); }
+.player { padding: 28px; }
+.eyebrow { color: var(--mint); font: 400 11px/1.4 "DM Mono", monospace; letter-spacing: .15em; text-transform: uppercase; }
+.player-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-top: 6px; }
+h1 { margin: 0; font-size: clamp(2.3rem, 5vw, 4.6rem); line-height: 1; letter-spacing: -.06em; }
+h1 span { color: var(--mint); font-weight: 400; }
+.phase { display: flex; align-items: center; gap: 8px; color: var(--muted); margin: 10px 0 0; text-transform: uppercase; font: 400 11px "DM Mono", monospace; }
+.phase i { width: 7px; height: 7px; border-radius: 50%; background: #4b5659; }
+.phase i.live { background: var(--mint); box-shadow: 0 0 12px var(--mint); }
+.transport { display: flex; gap: 8px; }
+.now-playing { display: grid; gap: 5px; margin-top: 35px; }
+.now-playing span, .request label { color: var(--muted); font: 400 10px "DM Mono", monospace; letter-spacing: .12em; text-transform: uppercase; }
+.now-playing strong { font-size: 1.18rem; }
+.now-playing small { color: var(--muted); }
+.timeline { height: 3px; margin-top: 18px; background: #283034; border-radius: 99px; overflow: hidden; }
+.timeline div { height: 100%; background: var(--mint); transition: width .25s linear; }
+.time-row { display: flex; justify-content: space-between; margin-top: 7px; color: var(--muted); font: 400 10px "DM Mono", monospace; }
+.request { margin-top: 28px; }
+.request > div { display: flex; gap: 8px; margin-top: 8px; }
+.request input { flex: 1; min-width: 0; color: #f4f7f8; border: 1px solid var(--border); border-radius: 8px; background: #0d1113; padding: 12px 14px; outline: none; }
+.request input:focus { border-color: var(--mint); box-shadow: 0 0 0 3px rgba(116,242,191,.08); }
+.quick-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 11px; }
+.quick-actions button { font-size: .74rem; padding: 6px 9px; }
+.quick-actions label { margin-left: auto; color: var(--muted); font-size: .76rem; display: flex; gap: 7px; align-items: center; }
+
+.metrics-grid { display: grid; grid-template-columns: 1fr 1fr 1.25fr; gap: 12px; margin-top: 12px; }
+.metric-card { padding: 18px; min-height: 215px; }
+.metric-card header, .log header { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font: 400 10px "DM Mono", monospace; text-transform: uppercase; letter-spacing: .08em; }
+.metric-card > strong { display: block; margin-top: 18px; min-height: 44px; line-height: 1.4; }
+.status { color: #9eacb0; border: 1px solid #405057; border-radius: 99px; padding: 3px 7px; font-size: 9px; }
+.status.healthy, .status.ready, .status.committed, .status.semantic { color: var(--mint); border-color: rgba(116,242,191,.4); }
+.status.generating, .status.buffering, .status.starting, .status.planning { color: var(--amber); border-color: rgba(255,200,107,.4); }
+dl { margin: 16px 0 0; }
+dl div { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); padding: 8px 0; }
+dt, dd { color: var(--muted); margin: 0; font: 400 11px "DM Mono", monospace; }
+dd { color: #dce5e7; overflow: hidden; text-overflow: ellipsis; }
+.tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.tags span { color: #b6c4c8; background: #252e31; border-radius: 4px; padding: 3px 6px; font-size: 10px; }
+pre { max-height: 92px; overflow: auto; color: #829095; font: 300 9px/1.45 "DM Mono", monospace; margin: 12px 0 0; }
+.logs-grid { display: grid; grid-template-columns: 1.25fr 1fr; gap: 12px; margin-top: 12px; }
+.log { padding: 16px 18px; min-height: 330px; }
+.log header b { color: #cbd6d9; }
+.log ol { list-style: none; padding: 0; margin: 12px 0 0; max-height: 330px; overflow: auto; }
+.log li { display: grid; grid-template-columns: 75px minmax(190px, auto) 1fr; gap: 9px; align-items: baseline; border-top: 1px solid var(--border); padding: 7px 0; }
+.log time, .log small { color: #718085; font: 300 9px "DM Mono", monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log code { color: #c7d3d6; font: 400 10px "DM Mono", monospace; }
+.error-banner { margin-top: 12px; color: #ffb2a4; border: 1px solid #713f38; border-radius: 8px; background: #2a1815; padding: 12px; }
+footer { color: #526065; text-align: center; font: 400 9px "DM Mono", monospace; letter-spacing: .08em; text-transform: uppercase; padding: 19px; }
+
+@media (max-width: 850px) {
+  .metrics-grid, .logs-grid { grid-template-columns: 1fr; }
+  .player-heading { flex-direction: column; }
+  .quick-actions label { margin-left: 0; width: 100%; }
+}
