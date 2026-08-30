@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GoogleAudioDecoder } from "./audio";
+import { GoogleAudioDecoder, resolveFfmpegExecutable } from "./audio";
 
 function wavFile(payload: Buffer, sampleRate = 48_000, channels = 2): Buffer {
   const header = Buffer.alloc(44);
@@ -20,6 +20,10 @@ function wavFile(payload: Buffer, sampleRate = 48_000, channels = 2): Buffer {
 }
 
 describe("GoogleAudioDecoder", () => {
+  it("uses an explicit FFmpeg path before the packaged binary", () => {
+    expect(resolveFfmpegExecutable({ FFMPEG_PATH: "/opt/robot-radio/ffmpeg" })).toBe("/opt/robot-radio/ffmpeg");
+  });
+
   it("converts 24 kHz mono PCM into the browser's 48 kHz stereo contract", () => {
     const source = Buffer.alloc(6);
     source.writeInt16LE(0, 0);

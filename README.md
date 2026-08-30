@@ -63,6 +63,40 @@ pnpm --filter @robot-radio/server profile:google-audio -- --mode tts
 pnpm --filter @robot-radio/server profile:google-tts -- --runs 3 --warmups 1
 ```
 
+## Production server
+
+The production adapter serves the web app, API, and WebSocket streams from one Node process.
+
+Build the workspace:
+
+```bash
+pnpm build
+```
+
+Start the production server:
+
+```bash
+PORT=8787 PROVIDER_STACK=mock pnpm start
+```
+
+Open [http://localhost:8787](http://localhost:8787). The server reads the built files from `apps/web/dist`.
+
+The production server uses the port in `PORT`. Cloud Run sets this value automatically.
+
+### Deploy from Google AI Studio
+
+1. Import the GitHub repository in AI Studio Build mode.
+2. Add `GEMINI_API_KEY` to the server secrets.
+3. Add `PROVIDER_STACK` with the value `google`.
+4. Build the app.
+5. Publish the app to Cloud Run.
+
+The repository can remain private. Give the Google AI Studio GitHub App access to this repository only.
+
+Cloud Run sets `K_SERVICE`. The server then writes structured logs to standard output.
+
+If you want local NDJSON files, set `ROBOT_RADIO_DEBUG_LOG=on`. Cloud Run does not preserve these files.
+
 ## Mock configuration
 
 The prototype uses these optional environment variables:
@@ -116,7 +150,7 @@ Lyria 3 currently returns one MP3 block, even when the request uses `response_fo
 
 Gemini billing must be active for the music models. The server starts without an external request. The `/api/health` response shows the selected adapters.
 
-The Google music adapter requires `ffmpeg` on `PATH` because the current Lyria 3 preview returns MP3. Set `FFMPEG_PATH` to use a different executable.
+The Google music adapter includes a packaged FFmpeg binary. Set `FFMPEG_PATH` to use a different executable.
 
 ### Profile Google music buffering
 

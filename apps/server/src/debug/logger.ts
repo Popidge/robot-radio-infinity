@@ -14,6 +14,8 @@ export interface DebugLogger {
   close(): void;
 }
 
+type DebugLogTarget = "file" | "off" | "stdout";
+
 const SENSITIVE_KEY = /api[-_]?key|authorization|cookie|credential|password|secret|token/i;
 const MAX_STRING_LENGTH = 20_000;
 const MAX_ARRAY_LENGTH = 200;
@@ -28,6 +30,14 @@ function configuredSecrets(): string[] {
     .filter(([name, value]) => SENSITIVE_KEY.test(name) && Boolean(value) && (value?.length ?? 0) >= 8)
     .map(([, value]) => value as string)
     .sort((left, right) => right.length - left.length);
+}
+
+function configuredTarget(): DebugLogTarget {
+  const configured = process.env.ROBOT_RADIO_DEBUG_LOG?.trim().toLowerCase();
+  if (configured === "off") return "off";
+  if (configured === "stdout") return "stdout";
+  if (configured === "file" || configured === "on") return "file";
+  return process.env.K_SERVICE ? "stdout" : "file";
 }
 
 function makeSanitizer(secrets: string[]): (value: unknown) => unknown {
@@ -79,7 +89,8 @@ function makeSanitizer(secrets: string[]): (value: unknown) => unknown {
 }
 
 export function createDebugLogger(now = new Date()): DebugLogger {
-  const enabled = process.env.ROBOT_RADIO_DEBUG_LOG !== "off";
+  const target = configuredTarget();
+  const enabled = target !== "off";
   const runId = randomUUID();
   const sanitize = makeSanitizer(configuredSecrets());
   let closed = false;
@@ -96,10 +107,10 @@ export function createDebugLogger(now = new Date()): DebugLogger {
     };
   }
 
-  const directory = resolve(process.cwd(), process.env.ROBOT_RADIO_DEBUG_LOG_DIR ?? "../../logs");
-  mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const filePath = resolve(directory, `robot-radio-${timestampForFile(now)}-${runId.slice(0, 8)}.ndjson`);
-  const file = openSync(filePath, "ax", 0o600);
+  const directory = target === "file" ? resolve(process.cwd(), process.env.ROBOT_RADIO_DEBUG_LOG_DIR ?? "../../logs") : null;
+  if (directory) mkdirSync(directory, { recursive: true, mode: 0o700 });
+  const filePath = directory ? resolve(directory, `robot-radio-${timestampForFile(now)}-${runId.slice(0, 8)}.ndjson`) : null;
+  const file = filePath ? openSync(filePath, "ax", 0o600) : null;
 
   function write(level: DebugLogLevel, event: string, data: Record<string, unknown> = {}): void {
     if (closed) return;
@@ -111,8 +122,14 @@ export function createDebugLogger(now = new Date()): DebugLogger {
       event,
       data
     });
+    const line = `${JSON.stringify(record)}\n`;
+    if (target === "stdout") {
+      process.stdout.write(line);
+      return;
+    }
+    if (file === null) return;
     try {
-      appendFileSync(file, `${JSON.stringify(record)}\n`, "utf8");
+      appendFileSync(file, line, "utf8");
     } catch (error) {
       console.error("Robot Radio could not write its debug log", error);
     }
@@ -132,7 +149,7 @@ export function createDebugLogger(now = new Date()): DebugLogger {
     close: () => {
       if (closed) return;
       closed = true;
-      closeSync(file);
+      if (file !== null) closeSync(file);
     }
   };
 }

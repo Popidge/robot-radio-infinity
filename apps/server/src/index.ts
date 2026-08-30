@@ -18,6 +18,7 @@ import { handleLyriaRoute } from "./routes/lyria";
 import { handleMusicRoute } from "./routes/music";
 import { sendJson } from "./routes/http";
 import { handleTTSRoute } from "./routes/tts";
+import { handleWebRoute, webDistDirectory } from "./web/static";
 
 type StreamKind = "music" | "lyria" | "tts";
 
@@ -25,6 +26,16 @@ interface StreamContext {
   connectionId: string;
   kind: StreamKind;
   streamId: string;
+}
+
+async function sendBinary(webSocket: WebSocket, chunk: Float32Array): Promise<void> {
+  const payload = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  await new Promise<void>((resolve, reject) => {
+    webSocket.send(payload, { binary: true }, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
 }
 
 const port = Number(process.env.PORT ?? 8787);
@@ -104,6 +115,7 @@ const server = createServer(async (request, response) => {
   if (await handleMusicRoute(url.pathname, request, response, musicProvider, logger)) return;
   if (await handleLyriaRoute(url.pathname, request, response, lyriaProvider, logger)) return;
   if (handleTTSRoute(url.pathname, request, response, providers.selections.tts)) return;
+  if (await handleWebRoute(url.pathname, request, response)) return;
   sendJson(response, 404, { error: "Route not found" });
 });
 
@@ -149,7 +161,7 @@ async function pipeStream(
       pcmChunks += 1;
       pcmBytes += chunk.byteLength;
       audioMs += (chunk.length / stream.channels / stream.sampleRate) * 1_000;
-      webSocket.send(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength));
+      await sendBinary(webSocket, chunk);
       peakSocketBufferedBytes = Math.max(peakSocketBufferedBytes, webSocket.bufferedAmount);
 
       if (pcmChunks === 1) {
@@ -321,7 +333,7 @@ process.once("exit", (code) => {
 });
 
 server.listen(port, () => {
-  logger.log("info", "server.listening", { port });
+  logger.log("info", "server.listening", { port, webDistDirectory: webDistDirectory() });
   console.log(`Robot Radio server listening on http://localhost:${port}`);
   if (logger.filePath) console.log(`Structured debug log: ${logger.filePath}`);
 });

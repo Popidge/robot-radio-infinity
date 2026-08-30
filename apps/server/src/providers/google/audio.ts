@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import ffmpegStaticPath from "ffmpeg-static";
 
 const OUTPUT_SAMPLE_RATE = 48_000;
 const OUTPUT_CHANNELS = 2;
@@ -79,8 +81,13 @@ function resampleToStereo(source: Float32Array, channels: number, sampleRate: nu
   return output;
 }
 
+export function resolveFfmpegExecutable(environment: NodeJS.ProcessEnv = process.env): string {
+  if (environment.FFMPEG_PATH) return environment.FFMPEG_PATH;
+  return ffmpegStaticPath && existsSync(ffmpegStaticPath) ? ffmpegStaticPath : "ffmpeg";
+}
+
 async function transcodeWithFfmpeg(encoded: Buffer): Promise<Float32Array> {
-  const executable = process.env.FFMPEG_PATH ?? "ffmpeg";
+  const executable = resolveFfmpegExecutable();
   return new Promise((resolve, reject) => {
     const processHandle = spawn(executable, [
       "-hide_banner",

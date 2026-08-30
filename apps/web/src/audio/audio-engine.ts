@@ -1,3 +1,5 @@
+import pcmPlayerWorkletUrl from "./pcm-player.worklet.ts?worker&url";
+
 type SourceKind = "track" | "lyria" | "tts";
 
 interface SourceMetrics {
@@ -49,7 +51,7 @@ export class AudioEngine {
       return;
     }
     this.context = new AudioContext({ sampleRate: 48_000, latencyHint: "playback" });
-    await this.context.audioWorklet.addModule(new URL("./pcm-player.worklet.ts", import.meta.url));
+    await this.context.audioWorklet.addModule(pcmPlayerWorkletUrl);
 
     this.masterBus = this.context.createGain();
     this.musicBus = this.context.createGain();
