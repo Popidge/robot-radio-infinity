@@ -8,14 +8,14 @@ importers:
 
   .: {}
 
-  apps/server:
+  apps/eleven/server:
     dependencies:
       '@google/genai':
         specifier: ^2.19.0
         version: 2.19.0
-      '@robot-radio/shared':
+      '@robot-radio/eleven-shared':
         specifier: '*'
-        version: link:../../packages/shared
+        version: link:../shared
       ffmpeg-static:
         specifier: ^5.3.0
         version: 5.3.0
@@ -42,11 +42,21 @@ importers:
         specifier: ^3.2.7
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.13)
 
-  apps/web:
+  apps/eleven/shared:
     dependencies:
-      '@robot-radio/shared':
+      zod:
+        specifier: ^4.1.5
+        version: 4.5.4
+    devDependencies:
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+
+  apps/eleven/web:
+    dependencies:
+      '@robot-radio/eleven-shared':
         specifier: '*'
-        version: link:../../packages/shared
+        version: link:../shared
       '@vitejs/plugin-react':
         specifier: ^5.0.2
         version: 5.2.0(vite@7.3.6(@types/node@24.13.3)(tsx@4.23.13))
@@ -76,7 +86,41 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.13)
 
-  packages/shared:
+  apps/google/server:
+    dependencies:
+      '@google/genai':
+        specifier: ^2.19.0
+        version: 2.19.0
+      '@robot-radio/google-shared':
+        specifier: '*'
+        version: link:../shared
+      ffmpeg-static:
+        specifier: ^5.3.0
+        version: 5.3.0
+      tsx:
+        specifier: ^4.23.13
+        version: 4.23.13
+      ws:
+        specifier: ^8.18.3
+        version: 8.21.3
+      zod:
+        specifier: ^4.1.5
+        version: 4.5.4
+    devDependencies:
+      '@types/node':
+        specifier: ^24.3.0
+        version: 24.13.3
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.13)
+
+  apps/google/shared:
     dependencies:
       zod:
         specifier: ^4.1.5
@@ -85,6 +129,40 @@ importers:
       typescript:
         specifier: ^5.9.2
         version: 5.9.3
+
+  apps/google/web:
+    dependencies:
+      '@robot-radio/google-shared':
+        specifier: '*'
+        version: link:../shared
+      '@vitejs/plugin-react':
+        specifier: ^5.0.2
+        version: 5.2.0(vite@7.3.6(@types/node@24.13.3)(tsx@4.23.13))
+      react:
+        specifier: ^19.1.1
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.1.1
+        version: 19.2.8(react@19.2.8)
+      vite:
+        specifier: ^7.1.3
+        version: 7.3.6(@types/node@24.13.3)(tsx@4.23.13)
+      zod:
+        specifier: ^4.1.5
+        version: 4.5.4
+    devDependencies:
+      '@types/react':
+        specifier: ^19.1.12
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: ^19.1.9
+        version: 19.2.5(@types/react@19.2.18)
+      typescript:
+        specifier: ^5.9.2
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.13)
 
 packages:
 

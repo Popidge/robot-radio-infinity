@@ -8,16 +8,26 @@
     "pnpm": "10.x"
   },
   "workspaces": [
-    "apps/*",
+    "apps/*/*",
     "packages/*"
   ],
   "scripts": {
-    "dev": "node scripts/dev.mjs",
-    "dev:local": "pnpm --parallel --filter @robot-radio/server --filter @robot-radio/web dev",
-    "dev:hosted": "npm run build && npm run start",
-    "build": "npm run build --workspace=@robot-radio/shared && npm run build --workspace=@robot-radio/web && npm run build --workspace=@robot-radio/server",
-    "start": "npm run start --workspace=@robot-radio/server",
-    "test": "npm run test --workspaces --if-present",
+    "dev": "node scripts/dev.mjs google",
+    "dev:google": "node scripts/dev.mjs google",
+    "dev:eleven": "node scripts/dev.mjs eleven",
+    "dev:hosted:google": "npm run build:google && npm run start:google",
+    "dev:hosted:eleven": "npm run build:eleven && npm run start:eleven",
+    "build": "npm run build:google",
+    "build:google": "npm run build --workspace=@robot-radio/google-shared && npm run build --workspace=@robot-radio/google-web && npm run build --workspace=@robot-radio/google-server",
+    "build:eleven": "npm run build --workspace=@robot-radio/eleven-shared && npm run build --workspace=@robot-radio/eleven-web && npm run build --workspace=@robot-radio/eleven-server",
+    "build:all": "npm run build:google && npm run build:eleven",
+    "start": "npm run start:google",
+    "start:google": "npm run start --workspace=@robot-radio/google-server",
+    "start:eleven": "npm run start --workspace=@robot-radio/eleven-server",
+    "test": "npm run test:all",
+    "test:google": "npm run test --workspace=@robot-radio/google-shared --if-present && npm run test --workspace=@robot-radio/google-server --if-present && npm run test --workspace=@robot-radio/google-web --if-present",
+    "test:eleven": "npm run test --workspace=@robot-radio/eleven-shared --if-present && npm run test --workspace=@robot-radio/eleven-server --if-present && npm run test --workspace=@robot-radio/eleven-web --if-present",
+    "test:all": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "npm run typecheck"
   }
