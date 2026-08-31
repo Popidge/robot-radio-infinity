@@ -8,6 +8,22 @@ afterEach(() => {
 });
 
 describe("provider selection", () => {
+  it("uses Google automatically in AI Studio when a Gemini key is injected", () => {
+    delete process.env.PROVIDER_STACK;
+    process.env.GEMINI_API_KEY = "test-key";
+    delete process.env.LLM_PROVIDER;
+    delete process.env.MUSIC_PROVIDER;
+    delete process.env.LYRIA_PROVIDER;
+    delete process.env.TTS_PROVIDER;
+
+    expect(readProviderSelections()).toEqual({
+      llm: "google",
+      music: "google",
+      lyria: "google",
+      tts: "google"
+    });
+  });
+
   it("selects a complete Google stack with one setting", () => {
     process.env.PROVIDER_STACK = "google";
     delete process.env.LLM_PROVIDER;

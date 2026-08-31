@@ -90,6 +90,10 @@ export class StationRuntime {
     return this.slowGeneration;
   }
 
+  readSpectrum = (target: Uint8Array<ArrayBuffer>): boolean => this.audio.readSpectrum(target);
+
+  spectrumBinCount = (): number => this.audio.spectrumBinCount();
+
   dispose(): void {
     if (this.progressTimer !== null) window.clearInterval(this.progressTimer);
     this.progressTimer = null;
@@ -177,6 +181,17 @@ export class StationRuntime {
           this.dispatch(nowEvent({ type: "CONTINUITY_PLAN_RECEIVED", requestId: command.input.requestId, plan }));
           return;
         }
+        case "REPAIR_TRACK_SPEC": {
+          const plan = await this.client.repairTrackSpec(command.input);
+          this.dispatch(nowEvent({
+            type: "TRACK_REPAIR_RECEIVED",
+            failedTrackId: command.failedTrackId,
+            requestId: command.input.requestId,
+            attempt: command.input.attempt,
+            plan
+          }));
+          return;
+        }
         case "SPEAK":
           this.speak(command.speechId, command.text);
           return;
@@ -230,6 +245,14 @@ export class StationRuntime {
           break;
         case "PLAN_CONTINUITY":
           this.dispatch(nowEvent({ type: "CONTINUITY_PLAN_FAILED", requestId: command.input.requestId, error: message }));
+          break;
+        case "REPAIR_TRACK_SPEC":
+          this.dispatch(nowEvent({
+            type: "TRACK_REPAIR_FAILED",
+            failedTrackId: command.failedTrackId,
+            requestId: command.input.requestId,
+            error: message
+          }));
           break;
         case "GENERATE_TRACK":
           this.dispatch(nowEvent({ type: "TRACK_GENERATION_FAILED", trackId: command.spec.id, error: message }));

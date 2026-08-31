@@ -1,6 +1,7 @@
 import {
   continuityPlanSchema,
   initialIntentPlanSchema,
+  trackRepairPlanSchema,
   urgencyAssessmentSchema,
   userIntentPlanSchema,
   type ContinuityInput,
@@ -12,6 +13,8 @@ import {
   type StationCommand,
   type StationEvent,
   type TrackSpec,
+  type TrackRepairInput,
+  type TrackRepairPlan,
   type UrgencyAssessment,
   type UrgencyInput,
   type UserIntentInput,
@@ -111,6 +114,10 @@ export class ServerClient {
     return this.post("/api/llm/continuity-plan", input, continuityPlanSchema.parse);
   }
 
+  repairTrackSpec(input: TrackRepairInput): Promise<TrackRepairPlan> {
+    return this.post("/api/llm/track-repair", input, trackRepairPlanSchema.parse);
+  }
+
   streamMusic(spec: TrackSpec, generationRate: number, callbacks: RemoteStreamCallbacks): RemoteStream {
     return this.openStream("/stream/music", { spec, generationRate }, callbacks);
   }
@@ -154,7 +161,7 @@ export class ServerClient {
     base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
     base.pathname = path;
     base.search = new URLSearchParams({ payload: this.encodePayload(payload) }).toString();
-    const socket = new WebSocket(base);
+    const socket = new WebSocket(base.toString());
     socket.binaryType = "arraybuffer";
     socket.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) {

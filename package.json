@@ -1,16 +1,24 @@
 {
   "name": "robot-radio-infinity",
   "private": true,
+  "type": "module",
   "packageManager": "pnpm@10.23.0",
   "engines": {
     "node": "24.x",
     "pnpm": "10.x"
   },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "pnpm --parallel --filter @robot-radio/server --filter @robot-radio/web dev",
-    "build": "pnpm -r build",
-    "start": "pnpm --filter @robot-radio/server start",
-    "test": "pnpm -r --if-present test",
-    "typecheck": "pnpm -r typecheck"
+    "dev": "node scripts/dev.mjs",
+    "dev:local": "pnpm --parallel --filter @robot-radio/server --filter @robot-radio/web dev",
+    "dev:hosted": "npm run build && npm run start",
+    "build": "npm run build --workspace=@robot-radio/shared && npm run build --workspace=@robot-radio/web && npm run build --workspace=@robot-radio/server",
+    "start": "npm run start --workspace=@robot-radio/server",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run typecheck"
   }
 }

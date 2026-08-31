@@ -20,13 +20,13 @@ The browser owns the station state, event log, timing rules, and audio transitio
 
 3. Open [http://localhost:5173](http://localhost:5173).
 
-4. Enter a starting style in **What's your vibe today?**. Then click **Start station**. This action gives the browser permission to start its `AudioContext`.
+4. Enter a starting style in **What's your vibe today?**. Then click **Start listening**. This action gives the browser permission to start its `AudioContext`.
 
 The first LLM call converts this message into the station's initial musical intent. The browser then starts Lyria RealTime and Lyria 3 Pro at the same time. Lyria plays when its safe buffer is ready. The first full track fades in when its buffer is ready.
 
-Use the **Slow future music** control before the next-track horizon. Lyria becomes audible when the incoming track cannot become safe in time.
+Open **Diagnostics** to find the mock controls. Enable **Simulate slow generation** before the next-track horizon. Lyria becomes audible when the incoming track cannot become safe in time.
 
-Use **Immediate redirect** to exercise this sequence:
+Select **Immediate redirect** in **Diagnostics** to test this sequence:
 
 1. The browser starts a muted Lyria stream.
 2. The urgency and intent mock calls run at the same time.
@@ -38,6 +38,10 @@ Use **Immediate redirect** to exercise this sequence:
 
 A normal next-track request follows one of two paths. Well before the horizon, it updates the musical intent and waits for normal horizon generation. Within the ten-second guard band before the horizon, it becomes a continuity-assisted request at the natural track boundary. The urgency classifier is the only model call that selects the timing path.
 
+The main interface shows the station, the DJ conversation, and a live audio visualizer. The visualizer uses the real output spectrum. The current intent controls its color, energy, and pulse.
+
+The DJ keeps a short memory of listener messages and its own recent lines. During hands-off playback, it can make small changes within the current musical direction. It speaks sparingly and avoids repeating recent phrases.
+
 ## Workspace
 
 ```text
@@ -47,6 +51,8 @@ packages/shared  Contracts and Zod schemas
 ```
 
 The reducer is pure. Provider results return as events, and external services never change station state directly.
+
+The LLM converts named artists, songs, and albums into musical attributes before it creates a provider request. If Lyria still rejects a track, the reducer sends the exact error and rejected specification back to Gemini. Gemini repairs only the rejected part, and the reducer starts a new generation. This retry is limited to two attempts. A healthy Lyria bridge remains available while the repair runs.
 
 The mock server makes stereo PCM fixtures after each stream request. It simulates startup latency, stream speed, cancellation, starvation, and failures through environment variables.
 
@@ -86,10 +92,13 @@ The production server uses the port in `PORT`. Cloud Run sets this value automat
 ### Deploy from Google AI Studio
 
 1. Import the GitHub repository in AI Studio Build mode.
-2. Add `GEMINI_API_KEY` to the server secrets.
-3. Add `PROVIDER_STACK` with the value `google`.
-4. Build the app.
-5. Publish the app to Cloud Run.
+2. Add `GEMINI_API_KEY` to the server secrets if AI Studio has not added it.
+3. Build the app.
+4. Publish the app to Cloud Run.
+
+The server selects the Google stack when `GEMINI_API_KEY` exists. Set `PROVIDER_STACK=mock` only when you want the hosted mock stack.
+
+AI Studio can install and build this npm workspace from `package-lock.json`. Its development command detects the hosted environment. It then builds the web app and starts the combined Node server.
 
 The repository can remain private. Give the Google AI Studio GitHub App access to this repository only.
 
@@ -240,6 +249,6 @@ Lyria becomes healthy after three buffered seconds. The runtime commits Lyria wh
 
 ## Tests
 
-The reducer tests cover prewarm ordering, idempotent leases, direct fades, Lyria commits, resolved durations, and user-request timing.
+The reducer tests cover prewarm ordering, idempotent leases, direct fades, Lyria commits, resolved durations, user-request timing, and provider-rejection repair.
 
 The server tests cover Google audio conversion and provider selection.

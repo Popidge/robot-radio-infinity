@@ -23,6 +23,7 @@ export const IMMEDIATE_CROSSFADE_MS = 1_800;
 export const DEFAULT_BRIDGE_MS = 4_000;
 export const STARTUP_BRIDGE_MS = 1_500;
 export const PROMOTED_FRAGMENT_MS = 4_000;
+export const MAX_TRACK_REPAIR_ATTEMPTS = 2;
 export const PROGRAM_TRACK_DURATION_MS = Number(import.meta.env.VITE_PROGRAM_TRACK_DURATION_MS ?? 180_000);
 
 export interface Reduction {
@@ -32,6 +33,7 @@ export interface Reduction {
 
 function snapshot(state: StationState): MusicalSnapshot {
   return {
+    title: state.playback.title ?? undefined,
     styleSummary: state.playback.styleSummary ?? state.intent.description,
     bpm: state.playback.bpm ?? midpoint(state.intent.bpmRange),
     key: state.playback.key ?? state.intent.keyPreference,
@@ -52,8 +54,9 @@ function midpoint(range?: [number, number]): number | undefined {
   return range ? Math.round((range[0] + range[1]) / 2) : undefined;
 }
 
-function directiveFromIntent(intent: MusicalIntent): TrackDirective {
+function directiveFromIntent(intent: MusicalIntent, title = "A New Signal"): TrackDirective {
   return {
+    title,
     description: intent.description,
     styles: intent.styles,
     mood: intent.mood,
@@ -79,7 +82,9 @@ function userIntentInput(state: StationState, requestId: string, message: string
   return {
     ...urgencyInput(state, requestId, message),
     remainingMs: state.playback.remainingMs,
-    recentTrackSummaries: state.recentTrackSummaries.slice(-5)
+    recentTracks: state.recentTracks.slice(-5),
+    recentUserMessages: state.recentUserMessages.slice(-5),
+    recentDjLines: state.recentDjLines.slice(-5)
   };
 }
 
@@ -88,16 +93,18 @@ function continuityInput(state: StationState, requestId: string): ContinuityInpu
     requestId,
     currentIntent: state.intent,
     currentTrack: state.playback.trackId ? snapshot(state) : null,
-    recentTrackSummaries: state.recentTrackSummaries.slice(-5),
-    recentUserMessages: state.recentUserMessages.slice(-5)
+    recentTracks: state.recentTracks.slice(-5),
+    recentUserMessages: state.recentUserMessages.slice(-5),
+    recentDjLines: state.recentDjLines.slice(-5)
   };
 }
 
 export function compileTrackSpec(id: string, directive: TrackDirective, intent: MusicalIntent): TrackSpec {
   const bpm = directive.bpm ?? midpoint(intent.bpmRange) ?? 116;
+  const title = directive.title.trim();
   return {
     id,
-    title: directive.description.length > 48 ? `${directive.description.slice(0, 45)}…` : directive.description,
+    title: title || "Untitled Signal",
     description: directive.description,
     styles: directive.styles ?? intent.styles,
     mood: directive.mood ?? intent.mood,
@@ -115,11 +122,16 @@ function append<T>(items: T[], item: T, limit: number): T[] {
 }
 
 function finish(state: StationState, event: StationEvent, commands: StationCommand[]): Reduction {
+  const recentDjLines = commands.reduce(
+    (lines, command) => command.type === "SPEAK" ? append(lines, command.text, 12) : lines,
+    state.recentDjLines
+  );
   return {
     state: {
       ...state,
       recentEvents: [...state.recentEvents, event],
-      recentCommands: [...state.recentCommands, ...commands]
+      recentCommands: [...state.recentCommands, ...commands],
+      recentDjLines
     },
     commands
   };
@@ -412,7 +424,11 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
     case "INITIAL_INTENT_RECEIVED": {
       if (state.startup?.requestId !== event.requestId) break;
       const intent = event.plan.intent;
-      const spec = compileTrackSpec(`opening-${event.requestId}`, directiveFromIntent(intent), intent);
+      const spec = compileTrackSpec(
+        `opening-${event.requestId}`,
+        directiveFromIntent(intent, event.plan.firstTrackTitle),
+        intent
+      );
       const seed = snapshotFromIntent(intent);
       nextState = {
         ...state,
@@ -547,7 +563,7 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
 
     case "USER_PLAN_RECEIVED": {
       if (state.pendingUser?.requestId !== event.requestId) break;
-      nextState = { ...state, pendingUser: { ...state.pendingUser, plan: event.plan } };
+      nextState = { ...state, error: undefined, pendingUser: { ...state.pendingUser, plan: event.plan } };
       const resolved = resolveUserRequest(nextState, event.at);
       nextState = resolved.state;
       commands = resolved.commands;
@@ -586,6 +602,7 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
       const spec = compileTrackSpec(`next-${event.requestId}`, event.plan.nextTrack, intent);
       nextState = {
         ...state,
+        error: undefined,
         intent,
         continuityPlanRequestId: undefined,
         nextTrack: { status: "planning", trackId: spec.id, spec, bufferedMs: 0, generatedMs: 0 }
@@ -607,6 +624,41 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
         nextTrack: { status: "planning", trackId: spec.id, spec, bufferedMs: 0, generatedMs: 0 }
       };
       commands = [{ type: "GENERATE_TRACK", spec }];
+      break;
+    }
+
+    case "TRACK_REPAIR_RECEIVED": {
+      if (state.nextTrack.trackId !== event.failedTrackId) break;
+      if (state.nextTrack.repairAttempts !== event.attempt) break;
+      const priorSpec = state.nextTrack.spec;
+      const directive: TrackDirective = {
+        ...event.plan.track,
+        durationMs: event.plan.track.durationMs ?? priorSpec?.durationMs ?? PROGRAM_TRACK_DURATION_MS
+      };
+      const spec = compileTrackSpec(`${event.failedTrackId}-retry-${event.attempt}`, directive, state.intent);
+      nextState = {
+        ...state,
+        error: undefined,
+        nextTrack: {
+          status: "planning",
+          trackId: spec.id,
+          spec,
+          bufferedMs: 0,
+          generatedMs: 0,
+          repairAttempts: event.attempt
+        }
+      };
+      commands = [{ type: "GENERATE_TRACK", spec }];
+      break;
+    }
+
+    case "TRACK_REPAIR_FAILED": {
+      if (state.nextTrack.trackId !== event.failedTrackId) break;
+      nextState = {
+        ...state,
+        error: event.error,
+        nextTrack: { ...state.nextTrack, status: "failed", error: event.error }
+      };
       break;
     }
 
@@ -672,14 +724,39 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
     case "TRACK_GENERATION_FAILED": {
       if (state.transitionFragment?.trackId === event.trackId) {
         nextState = { ...state, transitionFragment: undefined, error: event.error };
+        commands = [{ type: "CANCEL_TRACK", trackId: event.trackId }];
         break;
       }
       if (state.nextTrack.trackId !== event.trackId) break;
-      nextState = { ...state, nextTrack: updateTrackState(state.nextTrack, event), error: event.error };
+      const failedTrack = updateTrackState(state.nextTrack, event);
+      const attempt = (state.nextTrack.repairAttempts ?? 0) + 1;
+      nextState = {
+        ...state,
+        nextTrack: {
+          ...failedTrack,
+          status: attempt <= MAX_TRACK_REPAIR_ATTEMPTS ? "planning" : "failed",
+          repairAttempts: Math.min(attempt, MAX_TRACK_REPAIR_ATTEMPTS)
+        },
+        error: event.error
+      };
+      commands = [{ type: "CANCEL_TRACK", trackId: event.trackId }];
       if (state.continuity.status === "healthy" && state.playback.trackId) {
         const committed = commitBridge(nextState, event.at, 0);
         nextState = committed.state;
-        commands = committed.commands;
+        commands.push(...committed.commands);
+      }
+      if (attempt <= MAX_TRACK_REPAIR_ATTEMPTS && state.nextTrack.spec) {
+        commands.push({
+          type: "REPAIR_TRACK_SPEC",
+          failedTrackId: event.trackId,
+          input: {
+            requestId: `repair-${event.trackId}-${attempt}`,
+            attempt,
+            rejectedSpec: state.nextTrack.spec,
+            providerError: event.error,
+            currentIntent: state.intent
+          }
+        });
       }
       break;
     }
@@ -756,10 +833,20 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
       break;
 
     case "TRACK_STARTED": {
-      const previousSummary = state.playback.styleSummary;
+      const previousTrack = state.playback.trackId && state.playback.title && state.playback.styleSummary
+        ? {
+            trackId: state.playback.trackId,
+            title: state.playback.title,
+            description: state.playback.styleSummary,
+            bpm: state.playback.bpm,
+            key: state.playback.key,
+            energy: state.playback.energy
+          }
+        : undefined;
       const previousTrackId = state.playback.trackId;
       nextState = {
         ...state,
+        error: undefined,
         phase: "playing",
         playback: {
           trackId: event.trackId,
@@ -782,9 +869,9 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
         pendingBridgeSpeech: undefined,
         horizonFiredForTrackId: null,
         continuityPlanRequestId: undefined,
-        recentTrackSummaries: previousSummary
-          ? append(state.recentTrackSummaries, previousSummary, 20)
-          : state.recentTrackSummaries
+        recentTracks: previousTrack
+          ? append(state.recentTracks, previousTrack, 20)
+          : state.recentTracks
       };
       if (previousTrackId && previousTrackId !== event.trackId) {
         commands = [{ type: "CANCEL_TRACK", trackId: previousTrackId, afterMs: NORMAL_CROSSFADE_MS + 100 }];

@@ -1,4 +1,4 @@
-import pcmPlayerWorkletUrl from "./pcm-player.worklet.ts?worker&url";
+import pcmPlayerWorkletCode from "./pcm-player.worklet.ts?raw";
 
 type SourceKind = "track" | "lyria" | "tts";
 
@@ -39,6 +39,7 @@ export class AudioEngine {
   private incomingTrackBus: GainNode | null = null;
   private lyriaBus: GainNode | null = null;
   private ttsBus: GainNode | null = null;
+  private analyser: AnalyserNode | null = null;
   private currentTrack: PcmSource | null = null;
   private incomingTracks = new Map<string, PcmSource>();
   private lyria: PcmSource | null = null;
@@ -51,7 +52,13 @@ export class AudioEngine {
       return;
     }
     this.context = new AudioContext({ sampleRate: 48_000, latencyHint: "playback" });
-    await this.context.audioWorklet.addModule(pcmPlayerWorkletUrl);
+    const workletBlob = new Blob([pcmPlayerWorkletCode], { type: "application/javascript" });
+    const workletUrl = URL.createObjectURL(workletBlob);
+    try {
+      await this.context.audioWorklet.addModule(workletUrl);
+    } finally {
+      URL.revokeObjectURL(workletUrl);
+    }
 
     this.masterBus = this.context.createGain();
     this.musicBus = this.context.createGain();
@@ -59,6 +66,9 @@ export class AudioEngine {
     this.incomingTrackBus = this.context.createGain();
     this.lyriaBus = this.context.createGain();
     this.ttsBus = this.context.createGain();
+    this.analyser = this.context.createAnalyser();
+    this.analyser.fftSize = 256;
+    this.analyser.smoothingTimeConstant = 0.82;
     const compressor = this.context.createDynamicsCompressor();
     compressor.threshold.value = -6;
     compressor.knee.value = 8;
@@ -71,7 +81,8 @@ export class AudioEngine {
     this.lyriaBus.connect(this.musicBus);
     this.musicBus.connect(this.masterBus);
     this.ttsBus.connect(this.masterBus);
-    this.masterBus.connect(compressor);
+    this.masterBus.connect(this.analyser);
+    this.analyser.connect(compressor);
     compressor.connect(this.context.destination);
     this.masterBus.gain.value = 0.82;
     await this.context.resume();
@@ -269,6 +280,16 @@ export class AudioEngine {
     return this.lyria !== null;
   }
 
+  readSpectrum(target: Uint8Array<ArrayBuffer>): boolean {
+    if (!this.analyser || target.length !== this.analyser.frequencyBinCount) return false;
+    this.analyser.getByteFrequencyData(target);
+    return true;
+  }
+
+  spectrumBinCount(): number {
+    return this.analyser?.frequencyBinCount ?? 128;
+  }
+
   async stopAll(): Promise<void> {
     for (const source of this.incomingTracks.values()) this.dispose(source);
     for (const source of this.ttsSources.values()) this.dispose(source);
@@ -278,6 +299,7 @@ export class AudioEngine {
     this.ttsSources.clear();
     this.currentTrack = null;
     this.lyria = null;
+    this.analyser = null;
     const context = this.context;
     this.context = null;
     if (context) await context.close();

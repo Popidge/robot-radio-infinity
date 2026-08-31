@@ -13,6 +13,8 @@ function eventSummary(event: StationEvent): string {
   if (event.type === "TRACK_BUFFER_UPDATED") return `${milliseconds(event.bufferedMs)} buffered · ${event.generationRate.toFixed(2)}×`;
   if (event.type === "LYRIA_BUFFER_UPDATED") return `${milliseconds(event.bufferedMs)} buffered`;
   if (event.type === "TRACK_PROGRESS") return `${milliseconds(event.remainingMs)} remaining`;
+  if (event.type === "TRACK_REPAIR_RECEIVED") return `repair attempt ${event.attempt}`;
+  if (event.type === "TRACK_REPAIR_FAILED") return event.error;
   if ("trackId" in event) return String(event.trackId);
   if ("streamId" in event && event.streamId) return String(event.streamId);
   return "";
@@ -23,6 +25,7 @@ function commandSummary(command: StationCommand): string {
   if (command.type === "FADE") return `${command.from} → ${command.to} · ${milliseconds(command.durationMs)}`;
   if (command.type === "SPEAK") return `“${command.text}”`;
   if (command.type === "CANCEL_TRACK" || command.type === "PLAY_TRACK") return command.trackId;
+  if (command.type === "REPAIR_TRACK_SPEC") return `attempt ${command.input.attempt} · ${command.input.providerError}`;
   return "";
 }
 
@@ -30,7 +33,7 @@ export function StationDebugger({ state }: StationDebuggerProps) {
   const events = state.recentEvents.slice(-16).reverse();
   const commands = state.recentCommands.slice(-12).reverse();
   const incomingStatus = state.nextTrack.status === "none" && state.queuedDirective ? "queued" : state.nextTrack.status;
-  const incomingTitle = state.nextTrack.spec?.title ?? state.queuedDirective?.description ?? "No pending track";
+  const incomingTitle = state.nextTrack.spec?.title ?? state.queuedDirective?.title ?? "No pending track";
   return (
     <section className="debugger">
       <div className="metrics-grid">

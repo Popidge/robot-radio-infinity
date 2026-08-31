@@ -37,8 +37,9 @@ export function createInitialState(): StationState {
     dj: { speaking: false },
     recentEvents: [],
     recentCommands: [],
-    recentTrackSummaries: [],
+    recentTracks: [],
     recentUserMessages: [],
+    recentDjLines: [],
     horizonFiredForTrackId: null
   };
 }

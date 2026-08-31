@@ -19,6 +19,7 @@ export interface MusicalIntent {
 }
 
 export interface MusicalSnapshot {
+  title?: string;
   styleSummary: string;
   bpm?: number;
   key?: string;
@@ -26,6 +27,7 @@ export interface MusicalSnapshot {
 }
 
 export interface TrackDirective {
+  title: string;
   description: string;
   styles?: string[];
   mood?: string[];
@@ -39,13 +41,21 @@ export interface TrackDirective {
 
 export interface TrackSpec extends TrackDirective {
   id: string;
-  title: string;
   styles: string[];
   mood: string[];
   energy: number;
   bpm: number;
   key: string;
   durationMs: number;
+}
+
+export interface RecentTrack {
+  trackId: string;
+  title: string;
+  description: string;
+  bpm?: number;
+  key?: string;
+  energy?: number;
 }
 
 export interface LyriaKeyframe {
@@ -91,6 +101,7 @@ export interface InitialIntentInput {
 
 export interface InitialIntentPlan {
   intent: MusicalIntent;
+  firstTrackTitle: string;
 }
 
 export interface ContinuityPlan {
@@ -105,6 +116,18 @@ export interface ContinuityPlan {
   };
 }
 
+export interface TrackRepairInput {
+  requestId: string;
+  attempt: number;
+  rejectedSpec: TrackSpec;
+  providerError: string;
+  currentIntent: MusicalIntent;
+}
+
+export interface TrackRepairPlan {
+  track: TrackDirective;
+}
+
 export interface UrgencyInput {
   requestId: string;
   message: string;
@@ -114,15 +137,18 @@ export interface UrgencyInput {
 
 export interface UserIntentInput extends UrgencyInput {
   remainingMs: number | null;
-  recentTrackSummaries: string[];
+  recentTracks: RecentTrack[];
+  recentUserMessages: string[];
+  recentDjLines: string[];
 }
 
 export interface ContinuityInput {
   requestId: string;
   currentIntent: MusicalIntent;
   currentTrack: MusicalSnapshot | null;
-  recentTrackSummaries: string[];
+  recentTracks: RecentTrack[];
   recentUserMessages: string[];
+  recentDjLines: string[];
 }
 
 export interface PlaybackState {
@@ -146,6 +172,7 @@ export interface NextTrackState {
   generatedMs: number;
   generationRate?: number;
   firstAudioMs?: number;
+  repairAttempts?: number;
   error?: string;
 }
 
@@ -187,8 +214,9 @@ export interface StationState {
   dj: { speaking: boolean };
   recentEvents: StationEvent[];
   recentCommands: StationCommand[];
-  recentTrackSummaries: string[];
+  recentTracks: RecentTrack[];
   recentUserMessages: string[];
+  recentDjLines: string[];
   horizonFiredForTrackId: string | null;
   continuityPlanRequestId?: string;
   pendingUser?: PendingUserRequest;
@@ -217,6 +245,8 @@ export type StationEvent =
   | (EventBase & { type: "USER_PLAN_FAILED"; requestId: string; error: string })
   | (EventBase & { type: "CONTINUITY_PLAN_RECEIVED"; requestId: string; plan: ContinuityPlan })
   | (EventBase & { type: "CONTINUITY_PLAN_FAILED"; requestId: string; error: string })
+  | (EventBase & { type: "TRACK_REPAIR_RECEIVED"; failedTrackId: string; requestId: string; attempt: number; plan: TrackRepairPlan })
+  | (EventBase & { type: "TRACK_REPAIR_FAILED"; failedTrackId: string; requestId: string; error: string })
   | (EventBase & { type: "TRACK_GENERATION_STARTED"; trackId: string; spec: TrackSpec })
   | (EventBase & { type: "TRACK_FIRST_AUDIO"; trackId: string; latencyMs: number })
   | (EventBase & {
@@ -261,6 +291,7 @@ export type StationCommand =
   | { type: "ASSESS_USER_MESSAGE"; input: UrgencyInput }
   | { type: "PLAN_USER_INTENT"; input: UserIntentInput }
   | { type: "PLAN_CONTINUITY"; input: ContinuityInput }
+  | { type: "REPAIR_TRACK_SPEC"; failedTrackId: string; input: TrackRepairInput }
   | { type: "SPEAK"; speechId: string; text: string }
   | { type: "FADE"; from: FadeSource; to: FadeTarget; trackId?: string; durationMs: number }
   | { type: "PLAY_TRACK"; trackId: string; fadeMs: number }
@@ -306,4 +337,5 @@ export interface LLMProvider {
   assessUrgency(input: UrgencyInput): Promise<UrgencyAssessment>;
   planUserIntent(input: UserIntentInput): Promise<UserIntentPlan>;
   planContinuity(input: ContinuityInput): Promise<ContinuityPlan>;
+  repairTrackSpec(input: TrackRepairInput): Promise<TrackRepairPlan>;
 }

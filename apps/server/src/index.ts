@@ -332,8 +332,8 @@ process.once("exit", (code) => {
   logger.close();
 });
 
-server.listen(port, () => {
+server.listen(port, "0.0.0.0", () => {
   logger.log("info", "server.listening", { port, webDistDirectory: webDistDirectory() });
-  console.log(`Robot Radio server listening on http://localhost:${port}`);
+  console.log(`Robot Radio server listening on http://0.0.0.0:${port}`);
   if (logger.filePath) console.log(`Structured debug log: ${logger.filePath}`);
 });

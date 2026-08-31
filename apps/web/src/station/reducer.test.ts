@@ -32,6 +32,7 @@ const destinationIntent: MusicalIntent = {
 const userPlan: UserIntentPlan = {
   destinationIntent,
   nextTrack: {
+    title: "Iron After Midnight",
     description: "Distorted bass pulses and driving industrial drums",
     styles: destinationIntent.styles,
     mood: destinationIntent.mood,
@@ -96,7 +97,7 @@ function healthyContinuity(state = playingState(), leases: Array<"startup" | "us
 function trackSpec(id: string, description = "A continuation of the current sound"): TrackSpec {
   return compileTrackSpec(
     id,
-    { description, durationMs: 180_000 },
+    { title: "Test Signal", description, durationMs: 180_000 },
     createInitialState().intent
   );
 }
@@ -127,11 +128,12 @@ describe("station startup", () => {
       type: "INITIAL_INTENT_RECEIVED",
       at: at + 1,
       requestId,
-      plan: { intent: destinationIntent }
+      plan: { intent: destinationIntent, firstTrackTitle: "Iron After Midnight" }
     });
 
     expect(result.commands.map((command) => command.type)).toEqual(["PREWARM_CONTINUITY", "GENERATE_TRACK"]);
     expect(result.state.intent).toEqual(destinationIntent);
+    expect(result.state.nextTrack.spec?.title).toBe("Iron After Midnight");
     expect(result.state.continuity.leases).toContain("startup");
   });
 
@@ -191,6 +193,87 @@ describe("station startup", () => {
   });
 });
 
+describe("track generation repair", () => {
+  it("passes a provider rejection and rejected spec back to the planner before retrying", () => {
+    const rejected = trackSpec("rejected", "Country and western in the style of a named singer");
+    const state: StationState = {
+      ...healthyContinuity(playingState(22_000), ["horizon"]),
+      nextTrack: {
+        status: "generating",
+        trackId: rejected.id,
+        spec: rejected,
+        bufferedMs: 0,
+        generatedMs: 0
+      }
+    };
+
+    const result = reduce(state, {
+      type: "TRACK_GENERATION_FAILED",
+      at,
+      trackId: rejected.id,
+      error: "Prompt rejected: named artist copyright policy"
+    });
+
+    expect(result.commands.map((command) => command.type)).toEqual([
+      "CANCEL_TRACK",
+      "COMMIT_CONTINUITY",
+      "FADE",
+      "REPAIR_TRACK_SPEC"
+    ]);
+    expect(result.commands.at(-1)).toMatchObject({
+      type: "REPAIR_TRACK_SPEC",
+      failedTrackId: rejected.id,
+      input: {
+        attempt: 1,
+        rejectedSpec: rejected,
+        providerError: "Prompt rejected: named artist copyright policy"
+      }
+    });
+    expect(result.state.nextTrack.status).toBe("planning");
+    expect(result.state.nextTrack.repairAttempts).toBe(1);
+  });
+
+  it("generates the repaired directive as a fresh track while preserving duration", () => {
+    const rejected = trackSpec("rejected", "A rejected direction");
+    const state: StationState = {
+      ...playingState(),
+      nextTrack: {
+        status: "planning",
+        trackId: rejected.id,
+        spec: rejected,
+        bufferedMs: 0,
+        generatedMs: 0,
+        repairAttempts: 1,
+        error: "rejected"
+      }
+    };
+    const result = reduce(state, {
+      type: "TRACK_REPAIR_RECEIVED",
+      at,
+      failedTrackId: rejected.id,
+      requestId: "repair-rejected-1",
+      attempt: 1,
+      plan: {
+        track: {
+          title: "Theatrical Dust",
+          description: "Original theatrical country rock with agile wide-range vocals",
+          styles: ["country rock", "rock opera"],
+          mood: ["theatrical", "joyful"],
+          energy: 0.75,
+          bpm: 118,
+          key: "G major"
+        }
+      }
+    });
+
+    expect(result.commands).toHaveLength(1);
+    expect(result.commands[0]).toMatchObject({ type: "GENERATE_TRACK" });
+    expect(result.state.nextTrack.spec?.description).toContain("Original theatrical country rock");
+    expect(result.state.nextTrack.spec?.durationMs).toBe(rejected.durationMs);
+    expect(result.state.nextTrack.trackId).not.toBe(rejected.id);
+  });
+});
+
 describe("station request routing", () => {
   it("prewarms continuity before the two concurrent user calls", () => {
     const result = reduce(playingState(), {
@@ -204,6 +287,10 @@ describe("station request routing", () => {
       "ASSESS_USER_MESSAGE",
       "PLAN_USER_INTENT"
     ]);
+    expect(result.commands[2]).toMatchObject({
+      type: "PLAN_USER_INTENT",
+      input: { currentTrack: { title: "Current" } }
+    });
   });
 
   it("queues a well-ahead next-track request and releases speculative Lyria", () => {
@@ -531,5 +618,56 @@ describe("station recovery", () => {
 
     expect(result.state.playback.durationMs).toBe(175_650);
     expect(result.state.playback.remainingMs).toBe(175_650 - result.state.playback.playheadMs);
+  });
+});
+
+describe("track naming and memory", () => {
+  it("stores the previous track title and musical description when a new track starts", () => {
+    const next = trackSpec("next", "Angular comedy prog with elastic bass and theatrical vocals");
+    next.title = "The Titanic Fly Monster";
+    const result = reduce(playingState(), {
+      type: "TRACK_STARTED",
+      at,
+      trackId: next.id,
+      spec: next
+    });
+
+    expect(result.state.playback.title).toBe("The Titanic Fly Monster");
+    expect(result.state.recentTracks).toEqual([
+      expect.objectContaining({
+        trackId: "current",
+        title: "Current",
+        description: "Warm ambient techno"
+      })
+    ]);
+  });
+
+  it("passes named track history to the user planner", () => {
+    const state: StationState = {
+      ...playingState(),
+      recentTracks: [
+        {
+          trackId: "remembered",
+          title: "The Titanic Fly Monster",
+          description: "Angular comedy prog with elastic bass and theatrical vocals",
+          bpm: 132,
+          key: "E minor",
+          energy: 0.86
+        }
+      ]
+    };
+    const result = reduce(state, {
+      type: "USER_MESSAGE",
+      at,
+      requestId: "request-memory",
+      message: "More like that Titanic Fly Monster track"
+    });
+
+    expect(result.commands[2]).toMatchObject({
+      type: "PLAN_USER_INTENT",
+      input: {
+        recentTracks: [expect.objectContaining({ title: "The Titanic Fly Monster" })]
+      }
+    });
   });
 });

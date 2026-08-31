@@ -39,7 +39,8 @@ function geminiApiKey(): string {
 }
 
 export function readProviderSelections(): ProviderSelections {
-  const stack = selection("PROVIDER_STACK", "mock");
+  const defaultStack: ProviderName = process.env.GEMINI_API_KEY ? "google" : "mock";
+  const stack = selection("PROVIDER_STACK", defaultStack);
   return {
     llm: selection("LLM_PROVIDER", stack),
     music: selection("MUSIC_PROVIDER", stack),

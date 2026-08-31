@@ -1,25 +1,58 @@
-import { PcmRingBuffer } from "./stream-buffer";
+// This file must remain valid JavaScript: Vite loads its raw source into an
+// AudioWorklet Blob so it works in both local builds and AI Studio previews.
+// @ts-nocheck
 
-declare const sampleRate: number;
-declare class AudioWorkletProcessor {
-  readonly port: MessagePort;
+class PcmRingBuffer {
+  constructor(capacityFrames, channels) {
+    this.capacityFrames = capacityFrames;
+    this.channels = channels;
+    this.samples = new Float32Array(capacityFrames * channels);
+    this.readIndex = 0;
+    this.writeIndex = 0;
+    this.availableSamples = 0;
+  }
+
+  get availableFrames() {
+    return Math.floor(this.availableSamples / this.channels);
+  }
+
+  write(input) {
+    for (let index = 0; index < input.length; index += 1) {
+      if (this.availableSamples === this.samples.length) {
+        this.readIndex = (this.readIndex + 1) % this.samples.length;
+        this.availableSamples -= 1;
+      }
+      this.samples[this.writeIndex] = input[index] ?? 0;
+      this.writeIndex = (this.writeIndex + 1) % this.samples.length;
+      this.availableSamples += 1;
+    }
+  }
+
+  readFrame(target) {
+    if (this.availableSamples < this.channels) return false;
+    for (let channel = 0; channel < this.channels; channel += 1) {
+      target[channel] = this.samples[this.readIndex] ?? 0;
+      this.readIndex = (this.readIndex + 1) % this.samples.length;
+      this.availableSamples -= 1;
+    }
+    return true;
+  }
 }
-declare function registerProcessor(name: string, processorCtor: typeof AudioWorkletProcessor): void;
 
 class PcmPlayerProcessor extends AudioWorkletProcessor {
-  private readonly ring = new PcmRingBuffer(sampleRate * 180, 2);
-  private readonly frame = new Float32Array(2);
-  private playing = false;
-  private inputEnded = false;
-  private consumedFrames = 0;
-  private reportCounter = 0;
-  private starveCounter = 0;
-  private endedReported = false;
-
   constructor() {
     super();
-    this.port.onmessage = (event: MessageEvent) => {
-      const message = event.data as { type: string; pcm?: Float32Array };
+    this.ring = new PcmRingBuffer(sampleRate * 180, 2);
+    this.frame = new Float32Array(2);
+    this.playing = false;
+    this.inputEnded = false;
+    this.consumedFrames = 0;
+    this.reportCounter = 0;
+    this.starveCounter = 0;
+    this.endedReported = false;
+
+    this.port.onmessage = (event) => {
+      const message = event.data;
       if (message.type === "chunk" && message.pcm) this.ring.write(message.pcm);
       if (message.type === "play") this.playing = true;
       if (message.type === "pause") this.playing = false;
@@ -31,7 +64,7 @@ class PcmPlayerProcessor extends AudioWorkletProcessor {
     };
   }
 
-  process(_inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
+  process(_inputs, outputs) {
     const output = outputs[0];
     const left = output?.[0];
     const right = output?.[1];
