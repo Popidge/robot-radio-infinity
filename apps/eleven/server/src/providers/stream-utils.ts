@@ -48,4 +48,27 @@ export async function* createFixtureStream(
   }
 }
 
+export async function* pcmBytes(chunks: AsyncIterable<Float32Array>): AsyncGenerator<Uint8Array> {
+  for await (const chunk of chunks) {
+    yield new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+  }
+}
+
+export async function* responseBytes(
+  body: ReadableStream<Uint8Array>,
+  onFinished: () => void
+): AsyncGenerator<Uint8Array> {
+  const reader = body.getReader();
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      yield value;
+    }
+  } finally {
+    reader.releaseLock();
+    onFinished();
+  }
+}
+
 export { CHANNELS, SAMPLE_RATE };

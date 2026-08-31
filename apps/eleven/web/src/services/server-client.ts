@@ -5,6 +5,7 @@ import {
   trackRepairPlanSchema,
   urgencyAssessmentSchema,
   userIntentPlanSchema,
+  type AudioStreamEncoding,
   type ContinuityInput,
   type ContinuityPlan,
   type InitialIntentInput,
@@ -22,9 +23,10 @@ import {
   type UserIntentInput,
   type UserIntentPlan
 } from "@robot-radio/eleven-shared";
+import { StreamAudioDecoder } from "../audio/stream-audio-decoder";
 
 export interface RemoteStreamCallbacks {
-  onStart(metadata: { id: string; sampleRate: number; channels: number; durationMs: number | null }): void;
+  onStart(metadata: { id: string; encoding: AudioStreamEncoding; sampleRate: number; channels: number; durationMs: number | null }): void;
   onChunk(chunk: Float32Array): void;
   onEnd(): void;
   onError(error: Error): void;
@@ -160,36 +162,88 @@ export class ServerClient {
     base.search = new URLSearchParams({ payload: this.encodePayload(payload) }).toString();
     const socket = new WebSocket(base.toString());
     socket.binaryType = "arraybuffer";
+    let decoder: StreamAudioDecoder | null = null;
+    let processing = Promise.resolve();
+    let released = false;
+    let failed = false;
+
+    const closeDecoder = (): void => {
+      const current = decoder;
+      decoder = null;
+      if (current) void current.close().catch(() => undefined);
+    };
+    const fail = (error: unknown): void => {
+      if (released || failed) return;
+      failed = true;
+      const failure = error instanceof Error ? error : new Error(String(error));
+      callbacks.onError(failure);
+      closeDecoder();
+      socket.close(1011, "Stream failed");
+    };
+    const enqueue = (operation: () => Promise<void> | void): void => {
+      processing = processing.then(async () => {
+        if (!released && !failed) await operation();
+      }).catch(fail);
+    };
+
     socket.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) {
-        callbacks.onChunk(new Float32Array(event.data));
+        const bytes = new Uint8Array(event.data);
+        enqueue(async () => {
+          if (!decoder) throw new Error("Received audio before stream metadata");
+          const chunks = await decoder.push(bytes);
+          if (!released) for (const chunk of chunks) callbacks.onChunk(chunk);
+        });
         return;
       }
-      const message = JSON.parse(String(event.data)) as {
-        type: string;
-        id?: string;
-        sampleRate?: number;
-        channels?: number;
-        durationMs?: number | null;
-        error?: string;
-      };
-      if (message.type === "stream-start") {
-        callbacks.onStart({
-          id: message.id ?? "unknown",
-          sampleRate: message.sampleRate ?? 48_000,
-          channels: message.channels ?? 2,
-          durationMs: message.durationMs ?? null
-        });
-      } else if (message.type === "stream-end") {
-        callbacks.onEnd();
-        socket.close(1000, "Stream completed");
-      } else if (message.type === "stream-error") {
-        callbacks.onError(new Error(message.error ?? "Remote stream failed"));
-        socket.close(1011, "Stream failed");
+      try {
+        const message = JSON.parse(String(event.data)) as {
+          type: string;
+          id?: string;
+          encoding?: AudioStreamEncoding;
+          sampleRate?: number;
+          channels?: number;
+          durationMs?: number | null;
+          error?: string;
+        };
+        if (message.type === "stream-start") {
+          if (message.encoding !== "mp3" && message.encoding !== "pcm-f32le") {
+            throw new Error(`Unsupported audio stream encoding: ${String(message.encoding)}`);
+          }
+          const metadata = {
+            id: message.id ?? "unknown",
+            encoding: message.encoding,
+            sampleRate: message.sampleRate ?? 48_000,
+            channels: message.channels ?? 2,
+            durationMs: message.durationMs ?? null
+          };
+          decoder = new StreamAudioDecoder(metadata);
+          callbacks.onStart(metadata);
+        } else if (message.type === "stream-end") {
+          enqueue(async () => {
+            if (!decoder) throw new Error("Stream ended before metadata arrived");
+            for (const chunk of decoder.finish()) callbacks.onChunk(chunk);
+            await decoder.close();
+            decoder = null;
+            if (!released) callbacks.onEnd();
+            socket.close(1000, "Stream completed");
+          });
+        } else if (message.type === "stream-error") {
+          enqueue(() => { throw new Error(message.error ?? "Remote stream failed") });
+        }
+      } catch (error) {
+        fail(error);
       }
     };
-    socket.onerror = () => callbacks.onError(new Error(`WebSocket failed: ${path}`));
-    return { close: () => socket.close(1000, "Client released stream") };
+    socket.onerror = () => fail(new Error(`WebSocket failed: ${path}`));
+    return {
+      close: () => {
+        if (released) return;
+        released = true;
+        closeDecoder();
+        socket.close(1000, "Client released stream");
+      }
+    };
   }
 
   private encodePayload(payload: unknown): string {

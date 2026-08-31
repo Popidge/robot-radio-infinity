@@ -77,7 +77,7 @@ Each value can also be `mock`.
 
 The opening message starts one OpenAI planning call. The returned plan contains the musical intent, track title, and composition sections.
 
-The browser starts the first Eleven Music stream. Playback starts after the stream has a safe PCM buffer.
+The browser starts the first Eleven Music stream. ElevenLabs MP3 stays compressed across the server and WebSocket, then a browser worker decodes it. Playback starts after the decoded stream has a safe PCM buffer.
 
 Each listener message starts two calls at the same time:
 
@@ -112,7 +112,9 @@ apps/eleven/server  Node HTTP server, WebSocket streams, and provider adapters
 apps/eleven/shared  ElevenLabs/OpenAI contracts and Zod schemas
 ```
 
-The AudioWorklet receives interleaved 48 kHz stereo `Float32Array` chunks. The server decodes ElevenLabs MP3 streams with the packaged FFmpeg binary.
+Live ElevenLabs music and TTS stay in their 128 kbps MP3 form while they pass through the server. A browser Web Worker decodes each incremental MP3 chunk and normalizes it to interleaved 48 kHz stereo `Float32Array` chunks for the AudioWorklet. This keeps live audio transport near 57.6 MB per listener-hour instead of about 1.38 GB per listener-hour for raw float PCM.
+
+The mock providers still send generated 48 kHz stereo PCM. This keeps local development deterministic and provider-free. The music profiler retains its packaged FFmpeg decoder because it measures encoded and playable arrival timing outside the browser.
 
 ## Commands
 
@@ -174,4 +176,4 @@ If fewer than 15 seconds remain and the next track is unsafe, the reducer starts
 
 The reducer tests cover message races, classifier-first transitions, future requests, horizon generation, underruns, crossfades, and stale provider results.
 
-The server tests cover provider selection, structured logs, static hosting, and audio conversion.
+The server tests cover provider selection, structured logs, static hosting, and encoded provider pass-through. Browser tests cover streaming PCM normalization across decoder chunk boundaries.

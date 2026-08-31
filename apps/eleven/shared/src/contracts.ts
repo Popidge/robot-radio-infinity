@@ -288,9 +288,16 @@ export type StationCommand =
   | { type: "PLAY_TRANSITION"; transitionId: string; durationMs: number; minimumPlayMs: number }
   | { type: "STOP_ALL" };
 
-export interface StreamDescription { id: string; sampleRate: number; channels: number; durationMs: number | null }
-export interface MusicStream extends StreamDescription { chunks: AsyncIterable<Float32Array> }
-export interface AudioStream extends StreamDescription { chunks: AsyncIterable<Float32Array> }
+export type AudioStreamEncoding = "mp3" | "pcm-f32le";
+export interface StreamDescription {
+  id: string;
+  encoding: AudioStreamEncoding;
+  sampleRate: number;
+  channels: number;
+  durationMs: number | null;
+}
+export interface MusicStream extends StreamDescription { chunks: AsyncIterable<Uint8Array> }
+export interface AudioStream extends StreamDescription { chunks: AsyncIterable<Uint8Array> }
 export interface MusicProvider { generate(spec: TrackSpec, generationRate: number): Promise<MusicStream>; cancel(id: string): Promise<void> }
 export interface TransitionProvider { generate(spec: TransitionSpec, generationRate: number): Promise<MusicStream>; cancel(id: string): Promise<void> }
 export interface TTSProvider { speak(id: string, text: string): Promise<AudioStream>; cancel(id: string): Promise<void> }

@@ -26,7 +26,7 @@ interface StreamContext {
   streamId: string;
 }
 
-async function sendBinary(webSocket: WebSocket, chunk: Float32Array): Promise<void> {
+async function sendBinary(webSocket: WebSocket, chunk: Uint8Array): Promise<void> {
   const payload = Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength);
   await new Promise<void>((resolve, reject) => {
     webSocket.send(payload, { binary: true }, (error) => {
@@ -113,14 +113,14 @@ async function pipeStream(
 ): Promise<void> {
   const startedAt = performance.now();
   let firstChunkMs: number | null = null;
-  let pcmChunks = 0;
-  let pcmBytes = 0;
-  let audioMs = 0;
-  let lastProgressAudioMs = 0;
+  let transportChunks = 0;
+  let transportBytes = 0;
+  let lastProgressAtMs = 0;
   let peakSocketBufferedBytes = 0;
 
   logger.log("info", "stream.started", {
     ...context,
+    encoding: stream.encoding,
     sampleRate: stream.sampleRate,
     channels: stream.channels,
     declaredDurationMs: stream.durationMs
@@ -129,6 +129,7 @@ async function pipeStream(
     JSON.stringify({
       type: "stream-start",
       id: stream.id,
+      encoding: stream.encoding,
       sampleRate: stream.sampleRate,
       channels: stream.channels,
       durationMs: stream.durationMs
@@ -138,34 +139,32 @@ async function pipeStream(
   try {
     for await (const chunk of stream.chunks) {
       if (webSocket.readyState !== WebSocket.OPEN) {
-        logger.log("warn", "stream.client_closed", { ...context, pcmChunks, pcmBytes, audioMs });
+        logger.log("warn", "stream.client_closed", { ...context, transportChunks, transportBytes });
         break;
       }
       const elapsedMs = performance.now() - startedAt;
       firstChunkMs ??= elapsedMs;
-      pcmChunks += 1;
-      pcmBytes += chunk.byteLength;
-      audioMs += (chunk.length / stream.channels / stream.sampleRate) * 1_000;
+      transportChunks += 1;
+      transportBytes += chunk.byteLength;
       await sendBinary(webSocket, chunk);
       peakSocketBufferedBytes = Math.max(peakSocketBufferedBytes, webSocket.bufferedAmount);
 
-      if (pcmChunks === 1) {
-        logger.log("info", "stream.first_pcm", {
+      if (transportChunks === 1) {
+        logger.log("info", "stream.first_chunk", {
           ...context,
+          encoding: stream.encoding,
           firstChunkMs,
-          chunkBytes: chunk.byteLength,
-          chunkAudioMs: audioMs
+          chunkBytes: chunk.byteLength
         });
       }
-      if (audioMs - lastProgressAudioMs >= 5_000) {
-        lastProgressAudioMs = audioMs;
-        logger.log("debug", "stream.pcm_progress", {
+      if (elapsedMs - lastProgressAtMs >= 5_000) {
+        lastProgressAtMs = elapsedMs;
+        logger.log("debug", "stream.transport_progress", {
           ...context,
+          encoding: stream.encoding,
           elapsedMs,
-          audioMs,
-          pcmChunks,
-          pcmBytes,
-          generationRate: audioMs / Math.max(1, elapsedMs),
+          transportChunks,
+          transportBytes,
           socketBufferedBytes: webSocket.bufferedAmount,
           peakSocketBufferedBytes
         });
@@ -177,10 +176,9 @@ async function pipeStream(
       ...context,
       elapsedMs,
       firstChunkMs,
-      audioMs,
-      pcmChunks,
-      pcmBytes,
-      generationRate: audioMs / Math.max(1, elapsedMs),
+      encoding: stream.encoding,
+      transportChunks,
+      transportBytes,
       peakSocketBufferedBytes,
       clientConnected: webSocket.readyState === WebSocket.OPEN
     });
@@ -189,9 +187,9 @@ async function pipeStream(
       ...context,
       elapsedMs: performance.now() - startedAt,
       firstChunkMs,
-      audioMs,
-      pcmChunks,
-      pcmBytes,
+      encoding: stream.encoding,
+      transportChunks,
+      transportBytes,
       peakSocketBufferedBytes
     });
     if (webSocket.readyState === WebSocket.OPEN) {

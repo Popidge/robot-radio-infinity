@@ -12,9 +12,10 @@
   "dependencies": {
     "@robot-radio/eleven-shared": "*",
     "@vitejs/plugin-react": "^5.0.2",
-    "vite": "^7.1.3",
+    "mpg123-decoder": "1.0.3",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "vite": "^7.1.3",
     "zod": "^4.1.5"
   },
   "devDependencies": {

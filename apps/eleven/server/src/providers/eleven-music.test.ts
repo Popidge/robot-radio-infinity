@@ -50,6 +50,22 @@ const instrumentalTrack: TrackSpec = {
 };
 
 describe("Eleven Music composition plans", () => {
+  it("passes ElevenLabs MP3 bytes through without server-side PCM expansion", async () => {
+    const encoded = new Uint8Array([0x49, 0x44, 0x33, 3, 0, 0, 0, 0]);
+    const fetchMock = vi.fn(async (_input: string | URL | Request) => new Response(encoded));
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new ElevenMusicApiProvider("test-key");
+
+    const stream = await provider.generate(instrumentalTrack, 5);
+    const received: number[] = [];
+    for await (const chunk of stream.chunks) received.push(...chunk);
+
+    expect(stream.encoding).toBe("mp3");
+    expect(stream.sampleRate).toBe(48_000);
+    expect(received).toEqual(Array.from(encoded));
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("output_format=mp3_48000_128");
+  });
+
   it("keeps instrumental prose out of chunk text and puts musical direction in styles", async () => {
     const fetchMock = vi.fn(async () => rejectedResponse());
     vi.stubGlobal("fetch", fetchMock);

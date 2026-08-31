@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdirSync, writeFileSync, appendFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { once } from "node:events";
-import { resolveFfmpegExecutable } from "../providers/incremental-audio";
+import { resolveFfmpegExecutable } from "../providers/ffmpeg";
 
 type ProfileMode = "access" | "stream" | "detailed" | "bridge" | "transition" | "handoff" | "concurrent-inpaint";
 type JsonRecord = Record<string, unknown>;

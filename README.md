@@ -2,7 +2,7 @@
 
 Robot Radio Infinity is an AI-generated radio station that reacts while the listener is listening. The active product uses OpenAI for station planning and ElevenLabs for streamable music, transitions, and speech.
 
-The ElevenLabs/OpenAI implementation is the repository default. Its in-generation music stream gives the station a short time to first playable PCM, so its state machine is designed around live buffering, immediate transitions, and underrun protection.
+The ElevenLabs/OpenAI implementation is the repository default. Its in-generation music stream gives the station a short time to first playable PCM, so its state machine is designed around live buffering, immediate transitions, and underrun protection. ElevenLabs MP3 remains compressed through the server transport and is decoded in a browser worker before entering the existing Web Audio mixer.
 
 ## Start active development
 

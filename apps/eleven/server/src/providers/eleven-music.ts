@@ -1,7 +1,6 @@
 import type { MusicProvider, MusicStream, TrackSection, TrackSpec, TransitionProvider, TransitionSpec } from "@robot-radio/eleven-shared";
 import { fixtureSeed } from "../fixtures/waveforms";
-import { decodeAudioResponse, type DecodedAudioStream } from "./incremental-audio";
-import { CHANNELS, SAMPLE_RATE, createFixtureStream, type StreamControl } from "./stream-utils";
+import { CHANNELS, SAMPLE_RATE, createFixtureStream, pcmBytes, responseBytes, type StreamControl } from "./stream-utils";
 
 interface CompositionChunk {
   text: string;
@@ -11,7 +10,7 @@ interface CompositionChunk {
   context_adherence: "high";
 }
 
-interface ActiveRequest { controller: AbortController; decoder?: DecodedAudioStream }
+interface ActiveRequest { controller: AbortController; timeout: ReturnType<typeof setTimeout> }
 
 const DEFAULT_HTTP_RETRIES = 1;
 const DEFAULT_RETRY_DELAY_MS = 350;
@@ -191,10 +190,10 @@ export class ElevenMusicApiProvider implements MusicProvider, TransitionProvider
   async generate(spec: TrackSpec | TransitionSpec, _generationRate: number): Promise<MusicStream> {
     await this.cancel(spec.id);
     const controller = new AbortController();
-    const active: ActiveRequest = { controller };
-    this.active.set(spec.id, active);
     const isTransition = "instrumental" in spec;
     const timeout = setTimeout(() => controller.abort(new Error("Eleven Music did not finish within the configured timeout.")), Number(process.env.ELEVENLABS_MUSIC_TIMEOUT_MS ?? 240_000));
+    const active: ActiveRequest = { controller, timeout };
+    this.active.set(spec.id, active);
     let response: Response | undefined;
     let rejectedMessage: string | undefined;
     const maximumAttempts = nonNegativeInteger(process.env.ELEVENLABS_MUSIC_HTTP_RETRIES, DEFAULT_HTTP_RETRIES) + 1;
@@ -238,18 +237,26 @@ export class ElevenMusicApiProvider implements MusicProvider, TransitionProvider
       this.active.delete(spec.id);
       throw new Error("Eleven Music returned no audio body.");
     }
-    const decoder = decodeAudioResponse(response.body);
-    active.decoder = decoder;
-    void decoder.completed.finally(() => { clearTimeout(timeout); if (this.active.get(spec.id) === active) this.active.delete(spec.id) });
-    return { id: spec.id, sampleRate: 48_000, channels: 2, durationMs: spec.durationMs, chunks: decoder.chunks };
+    const finish = (): void => {
+      clearTimeout(timeout);
+      if (this.active.get(spec.id) === active) this.active.delete(spec.id);
+    };
+    return {
+      id: spec.id,
+      encoding: "mp3",
+      sampleRate: 48_000,
+      channels: 2,
+      durationMs: spec.durationMs,
+      chunks: responseBytes(response.body, finish)
+    };
   }
 
   async cancel(id: string): Promise<void> {
     const active = this.active.get(id);
     if (!active) return;
     this.active.delete(id);
+    clearTimeout(active.timeout);
     active.controller.abort();
-    active.decoder?.stop();
   }
 }
 
@@ -271,7 +278,14 @@ export class MockElevenMusicProvider implements MusicProvider, TransitionProvide
       starveForMs: process.env.MOCK_MUSIC_STARVE_FOR_MS ? Number(process.env.MOCK_MUSIC_STARVE_FOR_MS) : undefined
     };
     this.controls.set(spec.id, control);
-    return { id: spec.id, sampleRate: SAMPLE_RATE, channels: CHANNELS, durationMs: spec.durationMs, chunks: createFixtureStream(control, spec.durationMs, generationRate) };
+    return {
+      id: spec.id,
+      encoding: "pcm-f32le",
+      sampleRate: SAMPLE_RATE,
+      channels: CHANNELS,
+      durationMs: spec.durationMs,
+      chunks: pcmBytes(createFixtureStream(control, spec.durationMs, generationRate))
+    };
   }
 
   async cancel(id: string): Promise<void> {
