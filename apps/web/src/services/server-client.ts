@@ -46,6 +46,7 @@ export interface StationDebugState {
   pendingUser?: unknown;
   startup?: unknown;
   horizonFiredForTrackId: string | null;
+  horizonRequestId?: string;
   eventCount: number;
   commandCount: number;
 }

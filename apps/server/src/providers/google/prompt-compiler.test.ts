@@ -4,6 +4,7 @@ import { compileLyria3Prompt } from "./prompt-compiler";
 
 const spec: TrackSpec = {
   id: "titanic-fly-monster",
+  programmeId: "test-programme",
   revision: 0,
   title: "The Titanic Fly Monster",
   description: "Angular comedy prog with elastic bass and theatrical vocals",

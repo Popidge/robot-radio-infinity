@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { MusicalIntent, StationEvent, StationState, TrackDirective, TrackSpec, UserIntentPlan } from "@robot-radio/shared";
+import type { ContinuityPlan, MusicalIntent, StationEvent, StationState, TrackDirective, TrackSpec, UserIntentPlan } from "@robot-radio/shared";
 import { NORMAL_CROSSFADE_MS, UNDERRUN_THREAT_MS, compileTrackSpec, reduce } from "./reducer";
 import { createInitialState } from "./state";
 
@@ -234,5 +234,145 @@ describe("ElevenLabs station reducer", () => {
     expect(result.commands).toEqual([]);
     expect(result.state.nextTrack.status).toBe("failed");
     expect(result.state.nextTrack.repairAttempts).toBeUndefined();
+  });
+
+  it("starts an already-ready immediate transition when the slower full plan arrives", () => {
+    let state = reduce(playingState(), event({ type: "USER_MESSAGE", requestId: "race", message: "gabber now" })).state;
+    state = reduce(state, event({ type: "URGENCY_ASSESSMENT_RECEIVED", requestId: "race", assessment: immediateAssessment() })).state;
+    const transitionId = state.transition.transitionId!;
+
+    const earlyBridge = reduce(state, event({ type: "TRANSITION_READY", transitionId, revision: state.intentRevision }));
+    expect(earlyBridge.commands).toEqual([]);
+    expect(earlyBridge.state.transition.status).toBe("ready");
+
+    const planned = reduce(earlyBridge.state, event({ type: "USER_PLAN_RECEIVED", requestId: "race", plan }));
+    expect(planned.commands.map((command) => command.type)).toEqual(["GENERATE_TRACK", "PLAN_DJ_LINE", "PLAY_TRANSITION"]);
+    expect(planned.state.nextTrack.trackId).toBe("race-track");
+    expect(planned.state.transition.status).toBe("starting");
+  });
+
+  it("does not let horizon overwrite an active immediate replacement pipeline", () => {
+    let state = reduce(playingState(), event({ type: "USER_MESSAGE", requestId: "race", message: "gabber now" })).state;
+    state = reduce(state, event({ type: "URGENCY_ASSESSMENT_RECEIVED", requestId: "race", assessment: immediateAssessment() })).state;
+    const transitionId = state.transition.transitionId!;
+    state = reduce(state, event({ type: "TRANSITION_READY", transitionId, revision: state.intentRevision })).state;
+    state = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "race", plan })).state;
+    const intendedTrackId = state.nextTrack.trackId;
+    state = reduce(state, event({ type: "TRACK_READY", trackId: intendedTrackId!, revision: state.intentRevision })).state;
+
+    const horizon = reduce(state, event({ type: "NEXT_TRACK_HORIZON", requestId: "h-race", trackId: "current" }));
+    expect(horizon.commands).toEqual([]);
+    expect(horizon.state.nextTrack.trackId).toBe(intendedTrackId);
+    expect(horizon.state.nextTrack.status).toBe("ready");
+    expect(horizon.state.continuityPlanRequestId).toBeUndefined();
+    expect(horizon.state.horizonFiredForTrackId).toBe("current");
+  });
+
+  it("holds a due horizon while a listener message is unresolved, then uses that message's queued track", () => {
+    let state = reduce(playingState(45_000), event({ type: "USER_MESSAGE", requestId: "near", message: "from now on make it darker" })).state;
+    const horizon = reduce(state, event({ type: "NEXT_TRACK_HORIZON", requestId: "h-near", trackId: "current" }));
+    expect(horizon.commands).toEqual([]);
+    expect(horizon.state.horizonRequestId).toBe("h-near");
+
+    state = reduce(horizon.state, event({
+      type: "URGENCY_ASSESSMENT_RECEIVED",
+      requestId: "near",
+      assessment: { timing: "future", interruptCurrentTrack: false, confidence: 0.94 }
+    })).state;
+    const resolved = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "near", plan }));
+    expect(resolved.commands.map((command) => command.type)).toEqual(["GENERATE_TRACK"]);
+    expect(resolved.state.nextTrack.trackId).toBe("h-near-queued");
+    expect(resolved.state.nextTrack.spec?.description).toBe(nextDirective.description);
+    expect(resolved.state.continuityPlanRequestId).toBeUndefined();
+  });
+
+  it("keeps horizon generation inside the existing persistent intent", () => {
+    const horizon = reduce(playingState(50_000), event({ type: "NEXT_TRACK_HORIZON", requestId: "h1", trackId: "current" }));
+    expect(horizon.commands.map((command) => command.type)).toEqual(["PLAN_CONTINUITY"]);
+    const continuityPlan: ContinuityPlan = {
+      intentPatch: { description: "an unsolicited completely different station" },
+      nextTrack: { ...nextDirective, title: "A Different Arrangement" },
+      transition: { type: "simple_fade" }
+    };
+
+    const planned = reduce(horizon.state, event({ type: "CONTINUITY_PLAN_RECEIVED", requestId: "h1", plan: continuityPlan }));
+    expect(planned.state.intent).toEqual(intent);
+    expect(planned.commands.map((command) => command.type)).toEqual(["GENERATE_TRACK", "PLAN_DJ_LINE"]);
+    expect(planned.state.nextTrack.trackId).toBe("h1-track");
+  });
+
+  it("ignores a superseded horizon plan after a listener message arrives", () => {
+    const horizon = reduce(playingState(50_000), event({ type: "NEXT_TRACK_HORIZON", requestId: "old-horizon", trackId: "current" })).state;
+    const requested = reduce(horizon, event({ type: "USER_MESSAGE", requestId: "new-user", message: "actually, change direction" })).state;
+    const stalePlan: ContinuityPlan = { nextTrack: nextDirective, transition: { type: "simple_fade" } };
+    const stale = reduce(requested, event({ type: "CONTINUITY_PLAN_RECEIVED", requestId: "old-horizon", plan: stalePlan }));
+
+    expect(stale.commands).toEqual([]);
+    expect(stale.state.nextTrack.status).toBe("none");
+    expect(stale.state.horizonRequestId).toBe("old-horizon");
+  });
+
+  it("drops a DJ line whose subject track has been replaced", () => {
+    const spec = compileTrackSpec("replacement", 1, nextDirective, darkerIntent);
+    const state: StationState = {
+      ...playingState(),
+      intentRevision: 1,
+      nextTrack: { status: "ready", trackId: spec.id, revision: spec.revision, spec, bufferedMs: 12_000, generatedMs: 20_000 }
+    };
+    const result = reduce(state, event({
+      type: "DJ_LINE_RECEIVED",
+      requestId: "dj-old",
+      revision: 1,
+      subjectTrackId: "discarded-track",
+      plan: { speak: true, text: "Coming up: the track that no longer exists." }
+    }));
+
+    expect(result.commands).toEqual([]);
+    expect(result.state.dj.pending).toBeUndefined();
+  });
+
+  it("will not hand a transition to an unrelated track from the same intent revision", () => {
+    let state = reduce(playingState(), event({ type: "USER_MESSAGE", requestId: "matched", message: "gabber now" })).state;
+    state = reduce(state, event({ type: "URGENCY_ASSESSMENT_RECEIVED", requestId: "matched", assessment: immediateAssessment() })).state;
+    state = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "matched", plan })).state;
+    const transitionId = state.transition.transitionId!;
+    const trackId = state.nextTrack.trackId!;
+    state = reduce(state, event({ type: "TRANSITION_READY", transitionId, revision: state.intentRevision })).state;
+    state = reduce(state, event({ type: "TRANSITION_STARTED", transitionId, revision: state.intentRevision })).state;
+    state = reduce(state, event({ type: "TRACK_READY", trackId, revision: state.intentRevision })).state;
+    state = {
+      ...state,
+      nextTrack: { ...state.nextTrack, spec: { ...state.nextTrack.spec!, programmeId: "different-programme" } }
+    };
+
+    const minimum = reduce(state, event({ type: "TRANSITION_MINIMUM_PLAYED", transitionId, revision: state.intentRevision }));
+    expect(minimum.commands).toEqual([]);
+    expect(minimum.state.phase).toBe("transition");
+  });
+
+  it("holds the musical handoff until requested DJ speech finishes", () => {
+    let state = reduce(playingState(), event({ type: "USER_MESSAGE", requestId: "spoken", message: "gabber now" })).state;
+    state = reduce(state, event({ type: "URGENCY_ASSESSMENT_RECEIVED", requestId: "spoken", assessment: immediateAssessment() })).state;
+    state = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "spoken", plan })).state;
+    const transitionId = state.transition.transitionId!;
+    const trackId = state.nextTrack.trackId!;
+    state = reduce(state, event({ type: "TRANSITION_READY", transitionId, revision: state.intentRevision })).state;
+    state = reduce(state, event({ type: "TRANSITION_STARTED", transitionId, revision: state.intentRevision })).state;
+    state = reduce(state, event({ type: "TRACK_READY", trackId, revision: state.intentRevision })).state;
+
+    const line = reduce(state, event({
+      type: "DJ_LINE_RECEIVED",
+      requestId: "dj-spoken",
+      revision: state.intentRevision,
+      subjectTrackId: trackId,
+      plan: { speak: true, text: "Harder, faster, and gloriously unreasonable." }
+    }));
+    expect(line.commands.map((command) => command.type)).toEqual(["SPEAK"]);
+    expect(line.state.dj.speaking).toBe(true);
+
+    const minimum = reduce(line.state, event({ type: "TRANSITION_MINIMUM_PLAYED", transitionId, revision: state.intentRevision }));
+    expect(minimum.commands).toEqual([]);
+    const finished = reduce(minimum.state, event({ type: "TTS_FINISHED", speechId: "dj-spoken" }));
+    expect(finished.commands.some((command) => command.type === "FADE" && command.trackId === trackId)).toBe(true);
   });
 });

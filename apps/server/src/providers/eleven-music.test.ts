@@ -23,6 +23,7 @@ function requestBody(fetchMock: ReturnType<typeof vi.fn>, index = 0): Record<str
 
 const instrumentalTrack: TrackSpec = {
   id: "track-1",
+  programmeId: "programme-1",
   revision: 1,
   title: "Soft Compile",
   description: "A calm coding soundtrack with muted drums, rounded bass, electric piano, and airy pads.",
@@ -98,6 +99,7 @@ describe("Eleven Music composition plans", () => {
     const provider = new ElevenMusicApiProvider("test-key");
     const transition: TransitionSpec = {
       id: "transition-1",
+      programmeId: "programme-2",
       revision: 2,
       description: "Thin the current groove and introduce darker distorted syncopation.",
       sourceSummary: "warm downtempo electronica",

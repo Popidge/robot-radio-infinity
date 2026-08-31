@@ -87,6 +87,7 @@ export class StationRuntime {
       pendingUser: this.state.pendingUser,
       startup: this.state.startup,
       horizonFiredForTrackId: this.state.horizonFiredForTrackId,
+      horizonRequestId: this.state.horizonRequestId,
       eventCount: this.state.recentEvents.length,
       commandCount: this.state.recentCommands.length
     };
@@ -121,7 +122,7 @@ export class StationRuntime {
         }
         case "PLAN_DJ_LINE": {
           const plan = await this.client.planDjLine(command.input);
-          this.dispatch(nowEvent({ type: "DJ_LINE_RECEIVED", requestId: command.input.requestId, revision: command.revision, plan }));
+          this.dispatch(nowEvent({ type: "DJ_LINE_RECEIVED", requestId: command.input.requestId, revision: command.revision, subjectTrackId: command.subjectTrackId, plan }));
           return;
         }
         case "REPAIR_TRACK_SPEC": {
@@ -151,7 +152,7 @@ export class StationRuntime {
         case "ASSESS_USER_MESSAGE": this.dispatch(nowEvent({ type: "URGENCY_ASSESSMENT_FAILED", requestId: command.input.requestId, error: message })); break;
         case "PLAN_USER_INTENT": this.dispatch(nowEvent({ type: "USER_PLAN_FAILED", requestId: command.input.requestId, error: message })); break;
         case "PLAN_CONTINUITY": this.dispatch(nowEvent({ type: "CONTINUITY_PLAN_FAILED", requestId: command.input.requestId, error: message })); break;
-        case "PLAN_DJ_LINE": this.dispatch(nowEvent({ type: "DJ_LINE_FAILED", requestId: command.input.requestId, revision: command.revision, error: message })); break;
+        case "PLAN_DJ_LINE": this.dispatch(nowEvent({ type: "DJ_LINE_FAILED", requestId: command.input.requestId, revision: command.revision, subjectTrackId: command.subjectTrackId, error: message })); break;
         case "REPAIR_TRACK_SPEC": this.dispatch(nowEvent({ type: "TRACK_REPAIR_FAILED", failedTrackId: command.failedTrackId, requestId: command.input.requestId, error: message })); break;
         case "GENERATE_TRACK": this.dispatch(nowEvent({ type: "TRACK_GENERATION_FAILED", trackId: command.spec.id, revision: command.spec.revision, error: message })); break;
         case "GENERATE_TRANSITION": this.dispatch(nowEvent({ type: "TRANSITION_GENERATION_FAILED", transitionId: command.spec.id, revision: command.spec.revision, error: message })); break;

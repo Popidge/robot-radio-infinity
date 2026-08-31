@@ -50,6 +50,7 @@ export interface TrackDirective {
 
 export interface TrackSpec extends TrackDirective {
   id: string;
+  programmeId: string;
   revision: number;
   styles: string[];
   mood: string[];
@@ -68,6 +69,7 @@ export interface TransitionSketch {
 
 export interface TransitionSpec {
   id: string;
+  programmeId: string;
   revision: number;
   description: string;
   sourceSummary: string;
@@ -182,7 +184,7 @@ export interface NextTrackState {
 }
 
 export interface TransitionState {
-  status: "none" | "generating" | "buffering" | "ready" | "audible" | "failed";
+  status: "none" | "generating" | "buffering" | "ready" | "starting" | "audible" | "failed";
   transitionId?: string;
   revision?: number;
   spec?: TransitionSpec;
@@ -214,13 +216,14 @@ export interface StationState {
   intentRevision: number;
   nextTrack: NextTrackState;
   transition: TransitionState;
-  dj: { speaking: boolean; pending?: { speechId: string; text: string; revision: number } };
+  dj: { speaking: boolean; pending?: { speechId: string; text: string; revision: number; trackId?: string } };
   recentEvents: StationEvent[];
   recentCommands: StationCommand[];
   recentTracks: RecentTrack[];
   recentUserMessages: string[];
   recentDjLines: string[];
   horizonFiredForTrackId: string | null;
+  horizonRequestId?: string;
   continuityPlanRequestId?: string;
   pendingUser?: PendingUserRequest;
   queuedDirective?: TrackDirective;
@@ -242,8 +245,8 @@ export type StationEvent =
   | (EventBase & { type: "USER_PLAN_FAILED"; requestId: string; error: string })
   | (EventBase & { type: "CONTINUITY_PLAN_RECEIVED"; requestId: string; plan: ContinuityPlan })
   | (EventBase & { type: "CONTINUITY_PLAN_FAILED"; requestId: string; error: string })
-  | (EventBase & { type: "DJ_LINE_RECEIVED"; requestId: string; revision: number; plan: DJLinePlan })
-  | (EventBase & { type: "DJ_LINE_FAILED"; requestId: string; revision: number; error: string })
+  | (EventBase & { type: "DJ_LINE_RECEIVED"; requestId: string; revision: number; subjectTrackId?: string; plan: DJLinePlan })
+  | (EventBase & { type: "DJ_LINE_FAILED"; requestId: string; revision: number; subjectTrackId?: string; error: string })
   | (EventBase & { type: "TRACK_REPAIR_RECEIVED"; failedTrackId: string; requestId: string; attempt: number; plan: TrackRepairPlan })
   | (EventBase & { type: "TRACK_REPAIR_FAILED"; failedTrackId: string; requestId: string; error: string })
   | (EventBase & { type: "TRACK_GENERATION_STARTED"; trackId: string; revision: number; spec: TrackSpec })
@@ -277,7 +280,7 @@ export type StationCommand =
   | { type: "ASSESS_USER_MESSAGE"; input: UrgencyInput }
   | { type: "PLAN_USER_INTENT"; input: UserIntentInput }
   | { type: "PLAN_CONTINUITY"; input: ContinuityInput }
-  | { type: "PLAN_DJ_LINE"; revision: number; input: DJLineInput }
+  | { type: "PLAN_DJ_LINE"; revision: number; subjectTrackId?: string; input: DJLineInput }
   | { type: "REPAIR_TRACK_SPEC"; failedTrackId: string; input: TrackRepairInput }
   | { type: "SPEAK"; speechId: string; text: string }
   | { type: "FADE"; from: FadeSource; to: FadeTarget; trackId?: string; transitionId?: string; durationMs: number }

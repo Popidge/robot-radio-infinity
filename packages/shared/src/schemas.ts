@@ -36,7 +36,7 @@ export const trackDirectiveSchema = z.object({
 });
 
 export const trackSpecSchema = trackDirectiveSchema.extend({
-  id: z.string(), revision: z.number().int().nonnegative(), styles: z.array(z.string()), mood: z.array(z.string()),
+  id: z.string(), programmeId: z.string(), revision: z.number().int().nonnegative(), styles: z.array(z.string()), mood: z.array(z.string()),
   energy: z.number().min(0).max(1), bpm: z.number().positive(), key: z.string(), durationMs: z.number().int().positive()
 });
 
@@ -46,7 +46,7 @@ export const transitionSketchSchema = z.object({
 });
 
 export const transitionSpecSchema = z.object({
-  id: z.string(), revision: z.number().int().nonnegative(), description: z.string().min(1).max(800),
+  id: z.string(), programmeId: z.string(), revision: z.number().int().nonnegative(), description: z.string().min(1).max(800),
   sourceSummary: z.string().min(1).max(500), destinationSummary: z.string().min(1).max(500),
   styles: z.array(z.string()).min(1).max(8), mood: z.array(z.string()).min(1).max(8), energy: z.number().min(0).max(1),
   bpm: z.number().positive(), durationMs: z.number().int().positive(), instrumental: z.literal(true), reason: z.enum(["immediate", "underrun"])

@@ -157,7 +157,7 @@ export class OpenAILLMProvider implements LLMProvider {
       name: "station_continuity_plan",
       schema: continuityPlanSchema,
       effort: "low",
-      system: `You are an autonomous but restrained radio music director. Choose the next original track inside the current musical intent. Usually preserve the vibe, while gently varying energy, arrangement, instrumentation, or mood so the station develops rather than loops. Use recent history to avoid repetition. ${MUSIC_POLICY} Set a 180000 ms duration and a coherent 3-8 section structure with a clean intro and outro. Choose dj_link sparingly; simple_fade is normal.`,
+      system: `Choose the next original track strictly inside the current MusicalIntent. The horizon means "more of this current vibe," not permission to alter the station's persistent intent. Omit intentPatch. Vary composition, instrumentation, hooks, and arrangement enough to avoid repetition while preserving the requested styles, mood, energy range, tempo range, vocals, and language. Use recent history to avoid repeating titles or musical ideas. ${MUSIC_POLICY} Set a 180000 ms duration and a coherent 3-8 section structure with a clean intro and outro. Choose dj_link sparingly; simple_fade is normal.`,
       input
     });
   }
