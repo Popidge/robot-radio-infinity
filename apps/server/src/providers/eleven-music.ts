@@ -13,6 +13,9 @@ interface CompositionChunk {
 
 interface ActiveRequest { controller: AbortController; decoder?: DecodedAudioStream }
 
+const DEFAULT_HTTP_RETRIES = 1;
+const DEFAULT_RETRY_DELAY_MS = 350;
+
 function defaultSections(spec: TrackSpec): TrackSection[] {
   const intro = Math.max(8_000, Math.round(spec.durationMs * 0.12));
   const outro = Math.max(10_000, Math.round(spec.durationMs * 0.14));
@@ -38,36 +41,54 @@ function normalizedSections(spec: TrackSpec): TrackSection[] {
   });
 }
 
-function vocalDirection(spec: TrackSpec, section: TrackSection): string {
+function isInstrumental(spec: TrackSpec): boolean {
   const vocals = spec.vocals?.trim();
-  if (!vocals || /instrumental|no vocals/i.test(vocals)) return "[Instrumental] No sung or spoken words.";
+  return !vocals || /instrumental|no vocals/i.test(vocals);
+}
+
+function chunkText(spec: TrackSpec, section: TrackSection): string {
+  const heading = `[${section.name}]`;
+  if (isInstrumental(spec)) return `${heading}\n{instrumental, no vocals}`;
   const lyrics = section.lyrics?.trim();
-  return lyrics ? `[Original vocals in ${spec.language ?? "the requested language"}]\n${lyrics}` : `Original vocals: ${vocals}. Language: ${spec.language ?? "appropriate to the musical direction"}.`;
+  return lyrics ? `${heading}\n${lyrics}` : heading;
+}
+
+function vocalStyles(spec: TrackSpec): string[] {
+  if (isInstrumental(spec)) return ["instrumental", "no lead vocals", "no backing vocals", "no spoken words"];
+  return [
+    `original vocals: ${spec.vocals}`,
+    `vocal language: ${spec.language ?? "appropriate to the musical direction"}`
+  ];
+}
+
+function negativeStyles(spec: TrackSpec): string[] {
+  return [
+    ...(isInstrumental(spec) ? ["lead vocals", "backing vocals", "spoken words"] : ["spoken-word narration"]),
+    "long silence",
+    "abrupt truncation"
+  ];
 }
 
 function trackPlan(spec: TrackSpec): { chunks: CompositionChunk[] } {
   return {
     chunks: normalizedSections(spec).map((section) => ({
-      text: [
-        `[${section.name}]`,
-        `Working title: "${spec.title}".`,
-        spec.description,
-        section.description,
-        vocalDirection(spec, section),
-        section.transitionFriendly ? "Make the section boundary clean and useful for radio crossfading." : ""
-      ].filter(Boolean).join("\n"),
+      text: chunkText(spec, section),
       duration_ms: section.durationMs,
       positive_styles: [
         ...spec.styles,
         ...spec.mood,
         `${Math.round(spec.bpm)} BPM`,
         spec.key,
+        `original concept titled "${spec.title}"`,
+        spec.description,
+        section.description,
+        ...vocalStyles(spec),
         "original composition",
         "coherent arrangement",
         "radio-ready production",
         section.transitionFriendly ? "smooth section boundary" : "purposeful musical development"
       ],
-      negative_styles: ["named artist imitation", "copyrighted melody", "long silence", "abrupt truncation"],
+      negative_styles: negativeStyles(spec),
       context_adherence: "high"
     }))
   };
@@ -82,23 +103,45 @@ function transitionPlan(spec: TransitionSpec): { chunks: CompositionChunk[] } {
   return {
     chunks: [
       {
-        text: `[Instrumental departure]\nBegin inside this musical world: ${spec.sourceSummary}. ${spec.description} Remove melodic density early and create clean space for a DJ voice.`,
+        text: "[Departure]\n{instrumental transition}",
         duration_ms: departure,
-        positive_styles: [...common, ...spec.styles.slice(0, 3), "stable departure groove", "space for speech"],
+        positive_styles: [
+          ...common,
+          ...spec.styles.slice(0, 3),
+          `begin inside this musical world: ${spec.sourceSummary}`,
+          spec.description,
+          "reduce melodic density early",
+          "stable departure groove",
+          "space for DJ speech"
+        ],
         negative_styles: negative,
         context_adherence: "high"
       },
       {
-        text: `[Instrumental transformation]\nGradually and musically transform from ${spec.sourceSummary} toward ${spec.destinationSummary}. Avoid a collage or hard genre switch.`,
+        text: "[Transformation]\n{instrumental transition}",
         duration_ms: morph,
-        positive_styles: [...common, ...spec.mood, "gradual timbral transformation", "DJ-friendly transition"],
+        positive_styles: [
+          ...common,
+          ...spec.mood,
+          `gradually transform from ${spec.sourceSummary}`,
+          `move toward ${spec.destinationSummary}`,
+          "gradual timbral transformation",
+          "DJ-friendly transition"
+        ],
         negative_styles: negative,
         context_adherence: "high"
       },
       {
-        text: `[Instrumental arrival]\nArrive clearly in this destination: ${spec.destinationSummary}. End on a stable continuing phrase that can crossfade cleanly into the next full track.`,
+        text: "[Arrival]\n{instrumental transition}",
         duration_ms: arrival,
-        positive_styles: [...common, ...spec.styles.slice(-3), "clear destination identity", "crossfade-ready ending"],
+        positive_styles: [
+          ...common,
+          ...spec.styles.slice(-3),
+          `arrive clearly in this destination: ${spec.destinationSummary}`,
+          "stable continuing phrase",
+          "clear destination identity",
+          "crossfade-ready ending"
+        ],
         negative_styles: negative,
         context_adherence: "high"
       }
@@ -109,6 +152,30 @@ function transitionPlan(spec: TransitionSpec): { chunks: CompositionChunk[] } {
 async function errorPayload(response: Response): Promise<string> {
   const text = (await response.text()).slice(0, 12_000);
   try { return JSON.stringify(JSON.parse(text)) } catch { return text }
+}
+
+function nonNegativeInteger(value: string | undefined, fallback: number): number {
+  const parsed = Number(value ?? fallback);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function retryableStatus(status: number): boolean {
+  return status === 408 || status === 429 || status >= 500;
+}
+
+function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void> {
+  if (delayMs <= 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const onAbort = (): void => {
+      clearTimeout(timeout);
+      reject(signal.reason ?? new Error("Eleven Music request cancelled."));
+    };
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 export class ElevenMusicApiProvider implements MusicProvider, TransitionProvider {
@@ -128,27 +195,43 @@ export class ElevenMusicApiProvider implements MusicProvider, TransitionProvider
     this.active.set(spec.id, active);
     const isTransition = "instrumental" in spec;
     const timeout = setTimeout(() => controller.abort(new Error("Eleven Music did not finish within the configured timeout.")), Number(process.env.ELEVENLABS_MUSIC_TIMEOUT_MS ?? 240_000));
-    let response: Response;
+    let response: Response | undefined;
+    let rejectedMessage: string | undefined;
+    const maximumAttempts = nonNegativeInteger(process.env.ELEVENLABS_MUSIC_HTTP_RETRIES, DEFAULT_HTTP_RETRIES) + 1;
+    const retryDelayMs = nonNegativeInteger(process.env.ELEVENLABS_MUSIC_RETRY_DELAY_MS, DEFAULT_RETRY_DELAY_MS);
     try {
-      response = await fetch(`${this.baseUrl}/v1/music/stream?output_format=mp3_48000_128`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "xi-api-key": this.apiKey },
-        body: JSON.stringify({
-          model_id: process.env.ELEVENLABS_MUSIC_MODEL ?? "music_v2",
-          composition_plan: isTransition ? transitionPlan(spec) : trackPlan(spec),
-          store_for_inpainting: false
-        }),
-        signal: controller.signal
-      });
+      for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
+        try {
+          response = await fetch(`${this.baseUrl}/v1/music/stream?output_format=mp3_48000_128`, {
+            method: "POST",
+            headers: { "content-type": "application/json", "xi-api-key": this.apiKey },
+            body: JSON.stringify({
+              model_id: process.env.ELEVENLABS_MUSIC_MODEL ?? "music_v2",
+              composition_plan: isTransition ? transitionPlan(spec) : trackPlan(spec),
+              store_for_inpainting: false
+            }),
+            signal: controller.signal
+          });
+        } catch (error) {
+          if (controller.signal.aborted || attempt === maximumAttempts) throw error;
+          await waitForRetry(retryDelayMs * attempt, controller.signal);
+          continue;
+        }
+        if (response.ok) break;
+        const payload = await errorPayload(response);
+        rejectedMessage = `Eleven Music rejected ${isTransition ? "transition" : "track"} ${spec.id} with HTTP ${response.status}: ${payload}`;
+        if (!retryableStatus(response.status) || attempt === maximumAttempts) break;
+        await waitForRetry(retryDelayMs * attempt, controller.signal);
+      }
     } catch (error) {
       clearTimeout(timeout);
       this.active.delete(spec.id);
       throw error;
     }
-    if (!response.ok) {
+    if (!response?.ok) {
       clearTimeout(timeout);
       this.active.delete(spec.id);
-      throw new Error(`Eleven Music rejected ${isTransition ? "transition" : "track"} ${spec.id} with HTTP ${response.status}: ${await errorPayload(response)}`);
+      throw new Error(rejectedMessage ?? `Eleven Music did not return a usable response after ${maximumAttempts} attempts.`);
     }
     if (!response.body) {
       clearTimeout(timeout);

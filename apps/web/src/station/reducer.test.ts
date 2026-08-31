@@ -197,4 +197,42 @@ describe("ElevenLabs station reducer", () => {
     expect(stale.state.intentRevision).toBe(3);
     expect(stale.state.nextTrack.status).toBe("none");
   });
+
+  it("asks the LLM to repair an explicit provider policy rejection", () => {
+    const spec = compileTrackSpec("next", 1, nextDirective, darkerIntent);
+    const state: StationState = {
+      ...playingState(),
+      nextTrack: { status: "generating", trackId: spec.id, revision: spec.revision, spec, bufferedMs: 0, generatedMs: 0 }
+    };
+
+    const result = reduce(state, event({
+      type: "TRACK_GENERATION_FAILED",
+      trackId: spec.id,
+      revision: spec.revision,
+      error: 'Eleven Music rejected track with HTTP 422: {"detail":{"status":"bad_composition_plan"}}'
+    }));
+
+    expect(result.commands[0]?.type).toBe("REPAIR_TRACK_SPEC");
+    expect(result.state.nextTrack.status).toBe("planning");
+    expect(result.state.nextTrack.repairAttempts).toBe(1);
+  });
+
+  it("does not spend an LLM repair call on a technical provider failure", () => {
+    const spec = compileTrackSpec("next", 1, nextDirective, darkerIntent);
+    const state: StationState = {
+      ...playingState(),
+      nextTrack: { status: "generating", trackId: spec.id, revision: spec.revision, spec, bufferedMs: 0, generatedMs: 0 }
+    };
+
+    const result = reduce(state, event({
+      type: "TRACK_GENERATION_FAILED",
+      trackId: spec.id,
+      revision: spec.revision,
+      error: 'Eleven Music rejected track with HTTP 500: {"status":"internal_server_error"}'
+    }));
+
+    expect(result.commands).toEqual([]);
+    expect(result.state.nextTrack.status).toBe("failed");
+    expect(result.state.nextTrack.repairAttempts).toBeUndefined();
+  });
 });

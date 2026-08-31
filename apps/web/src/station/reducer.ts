@@ -257,6 +257,10 @@ function eventMatchesTransition(state: StationState, transitionId: string, revis
   return state.transition.transitionId === transitionId && state.transition.revision === revision;
 }
 
+function isRepairableTrackRejection(error: string): boolean {
+  return /bad_prompt|bad_composition_plan|prompt_suggestion|composition_plan_suggestion/i.test(error);
+}
+
 export function reduce(state: StationState, event: StationEvent): Reduction {
   let next = state;
   let commands: StationCommand[] = [];
@@ -404,6 +408,10 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
     }
     case "TRACK_GENERATION_FAILED": {
       if (!eventMatchesNext(state, event.trackId, event.revision) || !state.nextTrack.spec) break;
+      if (!isRepairableTrackRejection(event.error)) {
+        next = { ...state, nextTrack: { ...state.nextTrack, status: "failed", error: event.error }, error: event.error };
+        break;
+      }
       const attempt = (state.nextTrack.repairAttempts ?? 0) + 1;
       if (attempt > MAX_TRACK_REPAIR_ATTEMPTS) {
         next = { ...state, nextTrack: { ...state.nextTrack, status: "failed", error: event.error }, error: event.error };
