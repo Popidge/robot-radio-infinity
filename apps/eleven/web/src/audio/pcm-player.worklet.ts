@@ -1,5 +1,5 @@
 // This file must remain valid JavaScript: Vite loads its raw source into an
-// AudioWorklet Blob so it works in both local builds and AI Studio previews.
+// AudioWorklet Blob so it works in both local builds and hosted previews.
 // @ts-nocheck
 
 class PcmRingBuffer {

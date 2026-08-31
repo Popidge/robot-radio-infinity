@@ -93,12 +93,3 @@ export const trackRepairInputSchema = z.object({
 });
 export const trackRepairPlanSchema = z.object({ track: trackDirectiveSchema });
 export const ttsRequestSchema = z.object({ id: z.string(), text: z.string().min(1).max(600) });
-
-// Inactive Google-adapter schemas retained while those source files remain in this branch.
-export const lyriaKeyframeSchema = z.object({
-  at: z.number().min(0).max(1), description: z.string(), energy: z.number().min(0).max(1).optional(), bpm: z.number().positive().optional(), key: z.string().optional()
-});
-export const lyriaStartSchema = z.object({ id: z.string(), seed: musicalSnapshotSchema });
-export const lyriaSteerSchema = z.object({
-  sourceSummary: z.string(), destinationSummary: z.string(), durationMs: z.number().positive(), keyframes: z.array(lyriaKeyframeSchema).optional()
-});

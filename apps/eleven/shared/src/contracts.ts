@@ -302,9 +302,3 @@ export interface LLMProvider {
   planDjLine(input: DJLineInput): Promise<DJLinePlan>;
   repairTrackSpec(input: TrackRepairInput): Promise<TrackRepairPlan>;
 }
-
-// Inactive Google adapters still compile against these types, but station logic no longer uses them.
-export interface LyriaKeyframe { at: number; description: string; energy?: number; bpm?: number; key?: string }
-export interface LyriaTransitionPlan { sourceSummary: string; destinationSummary: string; durationMs: number; keyframes?: LyriaKeyframe[] }
-export interface ContinuityStream extends StreamDescription { chunks: AsyncIterable<Float32Array> }
-export interface ContinuityProvider { start(id: string, seed: MusicalSnapshot): Promise<ContinuityStream>; steer(id: string, plan: LyriaTransitionPlan): Promise<void>; stop(id: string): Promise<void> }

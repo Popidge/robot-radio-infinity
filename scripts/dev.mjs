@@ -1,15 +1,18 @@
 import { spawn } from "node:child_process";
 
-const app = process.argv[2] ?? process.env.ROBOT_RADIO_APP ?? "google";
+const app = process.argv[2] ?? process.env.ROBOT_RADIO_APP ?? "eleven";
 if (app !== "google" && app !== "eleven") {
   console.error(`Unknown Robot Radio app: ${app}`);
   process.exit(1);
 }
 
 const hosted = Boolean(process.env.PORT || process.env.K_SERVICE || process.env.AI_STUDIO_APP);
-const command = hosted ? "npm" : "pnpm";
+const useNpm = hosted && app === "google";
+const command = useNpm ? "npm" : "pnpm";
 const args = hosted
-  ? ["run", `dev:hosted:${app}`]
+  ? useNpm
+    ? ["run", `dev:hosted:${app}`]
+    : [`dev:hosted:${app}`]
   : ["--parallel", "--filter", `@robot-radio/${app}-server`, "--filter", `@robot-radio/${app}-web`, "dev"];
 
 const child = spawn(command, args, { stdio: "inherit", env: process.env });

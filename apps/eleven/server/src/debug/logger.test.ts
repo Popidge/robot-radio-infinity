@@ -18,14 +18,14 @@ describe("structured debug logger", () => {
     temporaryDirectories.push(directory);
     process.env.ROBOT_RADIO_DEBUG_LOG = "on";
     process.env.ROBOT_RADIO_DEBUG_LOG_DIR = directory;
-    process.env.GEMINI_API_KEY = "test-secret-api-key-value";
+    process.env.ELEVENLABS_API_KEY = "test-secret-api-key-value";
 
     const logger = createDebugLogger(new Date("2026-08-30T12:00:00.000Z"));
     logger.log("info", "test.started", {
       apiKey: "must-not-appear",
-      message: `provider echoed ${process.env.GEMINI_API_KEY}`
+      message: `provider echoed ${process.env.ELEVENLABS_API_KEY}`
     });
-    logger.error("test.failed", new Error(`failure for ${process.env.GEMINI_API_KEY}`));
+    logger.error("test.failed", new Error(`failure for ${process.env.ELEVENLABS_API_KEY}`));
     logger.close();
 
     expect(logger.filePath).not.toBeNull();

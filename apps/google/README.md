@@ -1,5 +1,9 @@
 # Robot Radio Infinity
 
+> **Status: frozen reference.** Active product development happens in `apps/eleven`. Keep this implementation buildable for comparison and research, but do not make it a compatibility target for ElevenLabs state-machine work.
+
+The immutable `snapshot/google-ai-studio-pre-monorepo` tag preserves the exact npm-based, Google AI Studio-ready repository layout. Use that tag when reproducing or deploying the original AI Studio application. The copy under `apps/google` remains available from the current monorepo through the explicit `:google` commands below.
+
 This application is the Google implementation of Robot Radio Infinity. All providers use local mocks by default. A vertically integrated Gemini and Lyria stack is also available.
 
 The browser owns the station state, event log, timing rules, and audio transitions. The server owns provider adapters and streams PCM audio.
@@ -9,13 +13,13 @@ The browser owns the station state, event log, timing rules, and audio transitio
 1. Install the workspace packages:
 
    ```bash
-   pnpm install
+   npm install
    ```
 
 2. Start the web app and the server:
 
    ```bash
-   pnpm dev
+   npm run dev:google
    ```
 
 3. Open [http://localhost:5173](http://localhost:5173).
@@ -59,10 +63,11 @@ The mock server makes stereo PCM fixtures after each stream request. It simulate
 ## Commands
 
 ```bash
-pnpm dev
-pnpm test
-pnpm typecheck
-pnpm build
+npm run dev:google
+npm run test:google
+npm run typecheck:google
+npm run build:google
+npm run start:google
 pnpm --filter @robot-radio/google-server profile:google-audio -- --mode realtime --realtime-seconds 20
 pnpm --filter @robot-radio/google-server profile:google-audio -- --mode pro --duration 180
 pnpm --filter @robot-radio/google-server profile:google-audio -- --mode tts
@@ -76,13 +81,13 @@ The production adapter serves the web app, API, and WebSocket streams from one N
 Build the workspace:
 
 ```bash
-pnpm build
+npm run build:google
 ```
 
 Start the production server:
 
 ```bash
-PORT=8787 PROVIDER_STACK=mock pnpm start
+PORT=8787 PROVIDER_STACK=mock npm run start:google
 ```
 
 Open [http://localhost:8787](http://localhost:8787). The server reads the built files from `apps/google/web/dist`.
@@ -212,7 +217,7 @@ Use this procedure for a test session:
 1. Start the app:
 
    ```bash
-   pnpm dev
+   npm run dev:google
    ```
 
 2. Use the station and reproduce the problem.

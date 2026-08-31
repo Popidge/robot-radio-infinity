@@ -1,6 +1,6 @@
 # Robot Radio Infinity
 
-This application contains the ElevenLabs and OpenAI implementation of Robot Radio Infinity.
+This is the active Robot Radio Infinity product. It uses ElevenLabs and OpenAI, and all default repository commands target it.
 
 The browser owns the station state, event log, timing rules, buffers, and audio transitions. The server owns API keys and provider adapters.
 
@@ -25,7 +25,7 @@ OpenAI makes scoped musical decisions. Deterministic browser code decides when a
 3. Start the web app and the server:
 
    ```bash
-   pnpm dev:eleven
+   pnpm dev
    ```
 
 4. Open [http://localhost:5173](http://localhost:5173).
@@ -46,7 +46,7 @@ OPENAI_API_KEY=your-key
 ELEVENLABS_API_KEY=your-key
 ```
 
-Then run `pnpm dev:eleven`.
+Then run `pnpm dev`.
 
 The server selects the live stack automatically when both keys exist. An explicit `PROVIDER_STACK=mock` value still selects mocks.
 
@@ -117,11 +117,15 @@ The AudioWorklet receives interleaved 48 kHz stereo `Float32Array` chunks. The s
 ## Commands
 
 ```bash
-pnpm dev:eleven
-pnpm test:eleven
+pnpm dev
+pnpm test
 pnpm typecheck
-pnpm build:eleven
+pnpm build
+pnpm start
+pnpm verify
 ```
+
+The longer `:eleven` command aliases remain available when an explicit application name is useful.
 
 The Eleven Music profiler makes paid API requests. Add `--confirm-cost` to permit a generation mode:
 
@@ -138,7 +142,7 @@ The server writes one NDJSON log for each local run. The startup output shows th
 
 Use this procedure for a test session:
 
-1. Start the app with `pnpm dev:eleven`.
+1. Start the app with `pnpm dev`.
 
 2. Reproduce the problem.
 

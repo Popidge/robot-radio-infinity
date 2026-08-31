@@ -2,7 +2,7 @@ export const SAMPLE_RATE = 48_000;
 export const CHANNELS = 2;
 export const CHUNK_MS = 100;
 
-export type FixtureKind = "music" | "lyria" | "tts";
+export type FixtureKind = "music" | "tts";
 
 export interface FixtureParameters {
   kind: FixtureKind;
@@ -50,8 +50,6 @@ export function renderFixtureChunk(
     let sample: number;
     if (parameters.kind === "music") {
       sample = pad * 0.2 + kick * (0.12 + parameters.energy * 0.18) + shimmer * 0.035;
-    } else if (parameters.kind === "lyria") {
-      sample = pad * 0.16 + kick * 0.08 + shimmer * 0.025;
     } else {
       const syllable = Math.floor(time * 5) % speechLength;
       const charCode = parameters.speechText?.charCodeAt(syllable) ?? 65;
