@@ -216,7 +216,7 @@ export interface StationState {
   intentRevision: number;
   nextTrack: NextTrackState;
   transition: TransitionState;
-  dj: { speaking: boolean; pending?: { speechId: string; text: string; revision: number; trackId?: string } };
+  dj: { speaking: boolean; speechId?: string; pending?: { speechId: string; text: string; revision: number; trackId?: string } };
   recentEvents: StationEvent[];
   recentCommands: StationCommand[];
   recentTracks: RecentTrack[];

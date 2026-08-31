@@ -63,6 +63,23 @@ export function compileTrackSpec(id: string, revision: number, directive: TrackD
   };
 }
 
+function compileHorizonTrackSpec(id: string, revision: number, directive: TrackDirective, intent: MusicalIntent, programmeId: string): TrackSpec {
+  const bpm = intent.bpmRange
+    ? Math.min(intent.bpmRange[1], Math.max(intent.bpmRange[0], directive.bpm ?? midpoint(intent.bpmRange)!))
+    : directive.bpm;
+  return compileTrackSpec(id, revision, {
+    ...directive,
+    description: `${intent.description}. Arrangement variation: ${directive.description}`.slice(0, 800),
+    styles: intent.styles,
+    mood: intent.mood,
+    energy: intent.energy ?? directive.energy,
+    bpm,
+    key: intent.keyPreference ?? directive.key,
+    vocals: intent.vocals ?? directive.vocals,
+    language: intent.language ?? directive.language
+  }, intent, programmeId);
+}
+
 function compileTransitionSpec(
   id: string,
   revision: number,
@@ -236,15 +253,16 @@ function resolveUser(state: StationState, at: number): Reduction {
 
 function beginTransitionFromUrgency(state: StationState, assessment: UrgencyAssessment): Reduction {
   const pending = state.pendingUser;
-  if (!pending || assessment.timing !== "immediate" || !assessment.interruptCurrentTrack || !assessment.immediateTransition) return { state, commands: [] };
+  if (!pending || assessment.timing !== "immediate") return { state, commands: [] };
   if (state.transition.revision === pending.revision && state.transition.status !== "none") return { state, commands: [] };
+  const sketch = assessment.immediateTransition;
   const provisionalIntent: MusicalIntent = {
     ...state.intent,
-    description: assessment.immediateTransition.destinationSketch,
-    energy: assessment.immediateTransition.energyDirection === "up" ? Math.min(1, (state.intent.energy ?? 0.55) + 0.15) :
-      assessment.immediateTransition.energyDirection === "down" ? Math.max(0, (state.intent.energy ?? 0.55) - 0.15) : state.intent.energy
+    description: sketch?.destinationSketch ?? state.intent.description,
+    energy: sketch?.energyDirection === "up" ? Math.min(1, (state.intent.energy ?? 0.55) + 0.15) :
+      sketch?.energyDirection === "down" ? Math.max(0, (state.intent.energy ?? 0.55) - 0.15) : state.intent.energy
   };
-  const spec = compileTransitionSpec(`${pending.requestId}-transition`, pending.revision, state, assessment.immediateTransition, provisionalIntent, "immediate", pending.requestId);
+  const spec = compileTransitionSpec(`${pending.requestId}-transition`, pending.revision, state, sketch, provisionalIntent, "immediate", pending.requestId);
   const commands: StationCommand[] = [];
   if (state.transition.transitionId) commands.push({ type: "CANCEL_TRANSITION", transitionId: state.transition.transitionId });
   commands.push({ type: "GENERATE_TRANSITION", spec });
@@ -353,7 +371,7 @@ function advanceProgramme(state: StationState): Reduction {
     const noPendingTrackChange = state.nextTrack.status === "none" || remainingMs <= UNDERRUN_THREAT_MS;
     if (state.transition.status === "audible" || (state.transition.status === "none" && noPendingTrackChange)) {
       return {
-        state: { ...state, dj: { speaking: true } },
+        state: { ...state, dj: { speaking: true, speechId: state.dj.pending.speechId } },
         commands: [{ type: "SPEAK", speechId: state.dj.pending.speechId, text: state.dj.pending.text }]
       };
     }
@@ -472,7 +490,7 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
     }
     case "CONTINUITY_PLAN_RECEIVED": {
       if (state.continuityPlanRequestId !== event.requestId) break;
-      const spec = compileTrackSpec(`${event.requestId}-track`, state.intentRevision, event.plan.nextTrack, state.intent, event.requestId);
+      const spec = compileHorizonTrackSpec(`${event.requestId}-track`, state.intentRevision, event.plan.nextTrack, state.intent, event.requestId);
       next = {
         ...state, continuityPlanRequestId: undefined,
         nextTrack: { status: "generating", trackId: spec.id, revision: spec.revision, spec, bufferedMs: 0, generatedMs: 0 }
@@ -578,10 +596,12 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
       }
       break;
     case "TTS_STARTED":
-      next = { ...state, dj: { ...state.dj, speaking: true } };
+      if (state.dj.speechId && state.dj.speechId !== event.speechId) break;
+      next = { ...state, dj: { ...state.dj, speaking: true, speechId: event.speechId } };
       break;
     case "TTS_FINISHED":
-      next = { ...state, dj: { ...state.dj, speaking: false } };
+      if (state.dj.speechId !== event.speechId) break;
+      next = { ...state, dj: { ...state.dj, speaking: false, speechId: undefined } };
       break;
     case "TRACK_STARTED": {
       if (state.nextTrack.trackId !== event.trackId) break;

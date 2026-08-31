@@ -299,6 +299,16 @@ describe("ElevenLabs station reducer", () => {
     expect(planned.state.intent).toEqual(intent);
     expect(planned.commands.map((command) => command.type)).toEqual(["GENERATE_TRACK", "PLAN_DJ_LINE"]);
     expect(planned.state.nextTrack.trackId).toBe("h1-track");
+    expect(planned.state.nextTrack.spec).toMatchObject({
+      programmeId: "h1",
+      styles: intent.styles,
+      mood: intent.mood,
+      energy: intent.energy,
+      bpm: intent.bpmRange?.[1],
+      key: intent.keyPreference,
+      vocals: intent.vocals
+    });
+    expect(planned.state.nextTrack.spec?.description).toContain(intent.description);
   });
 
   it("ignores a superseded horizon plan after a listener message arrives", () => {
