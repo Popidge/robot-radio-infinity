@@ -1,62 +1,69 @@
-import type { ContinuityProvider, LLMProvider, MusicProvider, TTSProvider } from "@robot-radio/shared";
-import { MockElevenMusicProvider } from "./eleven-music";
-import { MockElevenTTSProvider } from "./eleven-tts";
-import { GoogleLLMProvider } from "./google/llm";
-import { GoogleLyriaRealtimeProvider } from "./google/lyria-realtime";
-import { GoogleLyria3MusicProvider } from "./google/lyria3-music";
-import { GoogleTTSProvider } from "./google/tts";
+import type { LLMProvider, MusicProvider, TransitionProvider, TTSProvider } from "@robot-radio/shared";
+import { ElevenMusicApiProvider, MockElevenMusicProvider } from "./eleven-music";
+import { ElevenTTSApiProvider, MockElevenTTSProvider } from "./eleven-tts";
 import { MockLLMProvider } from "./llm";
-import { MockLyriaProvider } from "./lyria";
-import type { GoogleAudioTelemetrySink } from "./google/telemetry";
+import { OpenAILLMProvider } from "./openai/llm";
 
-export type ProviderName = "mock" | "google";
+export type LLMProviderName = "mock" | "openai";
+export type AudioProviderName = "mock" | "eleven";
 
 export interface ProviderSelections {
-  llm: ProviderName;
-  music: ProviderName;
-  lyria: ProviderName;
-  tts: ProviderName;
+  llm: LLMProviderName;
+  music: AudioProviderName;
+  transitions: AudioProviderName;
+  tts: AudioProviderName;
 }
 
 export interface ProviderBundle {
   selections: ProviderSelections;
   llm: LLMProvider;
   music: MusicProvider;
-  lyria: ContinuityProvider;
+  transitions: TransitionProvider;
   tts: TTSProvider;
 }
 
-function selection(name: string, fallback: ProviderName): ProviderName {
+function selectLLM(name: string, fallback: LLMProviderName): LLMProviderName {
   const value = process.env[name] ?? fallback;
-  if (value === "mock" || value === "google") return value;
-  throw new Error(`${name} must be "mock" or "google" for this milestone; received "${value}"`);
+  if (value === "mock" || value === "openai") return value;
+  throw new Error(`${name} must be "mock" or "openai"; received "${value}"`);
 }
 
-function geminiApiKey(): string {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("GEMINI_API_KEY is required when a Google provider is selected");
-  return apiKey;
+function selectAudio(name: string, fallback: AudioProviderName): AudioProviderName {
+  const value = process.env[name] ?? fallback;
+  if (value === "mock" || value === "eleven") return value;
+  throw new Error(`${name} must be "mock" or "eleven"; received "${value}"`);
 }
 
 export function readProviderSelections(): ProviderSelections {
-  const stack = selection("PROVIDER_STACK", "mock");
+  const configured = process.env.PROVIDER_STACK;
+  if (configured && configured !== "mock" && configured !== "eleven") {
+    throw new Error(`PROVIDER_STACK must be "mock" or "eleven" in this worktree; received "${configured}"`);
+  }
+  const stack: "mock" | "eleven" = configured === "eleven" ? "eleven" : configured === "mock" ? "mock" :
+    process.env.OPENAI_API_KEY && process.env.ELEVENLABS_API_KEY ? "eleven" : "mock";
   return {
-    llm: selection("LLM_PROVIDER", stack),
-    music: selection("MUSIC_PROVIDER", stack),
-    lyria: selection("LYRIA_PROVIDER", stack),
-    tts: selection("TTS_PROVIDER", stack)
+    llm: selectLLM("LLM_PROVIDER", stack === "eleven" ? "openai" : "mock"),
+    music: selectAudio("MUSIC_PROVIDER", stack),
+    transitions: selectAudio("TRANSITION_PROVIDER", stack),
+    tts: selectAudio("TTS_PROVIDER", stack)
   };
 }
 
-export function createProviders(options: { googleAudioTelemetry?: GoogleAudioTelemetrySink } = {}): ProviderBundle {
+export function createProviders(): ProviderBundle {
   const selections = readProviderSelections();
-  const needsGoogle = Object.values(selections).includes("google");
-  const apiKey = needsGoogle ? geminiApiKey() : "";
+  const needsEleven = selections.music === "eleven" || selections.transitions === "eleven" || selections.tts === "eleven";
+  const elevenKey = process.env.ELEVENLABS_API_KEY ?? "";
+  if (needsEleven && !elevenKey) throw new Error("ELEVENLABS_API_KEY is required when an ElevenLabs provider is selected");
+  const openAIKey = process.env.OPENAI_API_KEY ?? "";
+  if (selections.llm === "openai" && !openAIKey) throw new Error("OPENAI_API_KEY is required when the OpenAI provider is selected");
+
+  const elevenMusic = new ElevenMusicApiProvider(elevenKey);
+  const mockMusic = new MockElevenMusicProvider();
   return {
     selections,
-    llm: selections.llm === "google" ? new GoogleLLMProvider(apiKey) : new MockLLMProvider(),
-    music: selections.music === "google" ? new GoogleLyria3MusicProvider(apiKey, options.googleAudioTelemetry) : new MockElevenMusicProvider(),
-    lyria: selections.lyria === "google" ? new GoogleLyriaRealtimeProvider(apiKey, options.googleAudioTelemetry) : new MockLyriaProvider(),
-    tts: selections.tts === "google" ? new GoogleTTSProvider(apiKey, options.googleAudioTelemetry) : new MockElevenTTSProvider()
+    llm: selections.llm === "openai" ? new OpenAILLMProvider(openAIKey) : new MockLLMProvider(),
+    music: selections.music === "eleven" ? elevenMusic : mockMusic,
+    transitions: selections.transitions === "eleven" ? elevenMusic : mockMusic,
+    tts: selections.tts === "eleven" ? new ElevenTTSApiProvider(elevenKey) : new MockElevenTTSProvider()
   };
 }

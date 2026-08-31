@@ -1,17 +1,22 @@
 import {
   continuityPlanSchema,
+  djLinePlanSchema,
   initialIntentPlanSchema,
+  trackRepairPlanSchema,
   urgencyAssessmentSchema,
   userIntentPlanSchema,
   type ContinuityInput,
   type ContinuityPlan,
   type InitialIntentInput,
   type InitialIntentPlan,
-  type LyriaTransitionPlan,
-  type MusicalSnapshot,
+  type DJLineInput,
+  type DJLinePlan,
   type StationCommand,
   type StationEvent,
   type TrackSpec,
+  type TransitionSpec,
+  type TrackRepairInput,
+  type TrackRepairPlan,
   type UrgencyAssessment,
   type UrgencyInput,
   type UserIntentInput,
@@ -36,12 +41,10 @@ export interface StationDebugState {
   playback: unknown;
   intent: unknown;
   nextTrack: unknown;
-  continuity: unknown;
+  transition: unknown;
   dj: unknown;
   pendingUser?: unknown;
   startup?: unknown;
-  transitionFragment?: unknown;
-  pendingBridgeSpeech?: unknown;
   horizonFiredForTrackId: string | null;
   eventCount: number;
   commandCount: number;
@@ -111,24 +114,24 @@ export class ServerClient {
     return this.post("/api/llm/continuity-plan", input, continuityPlanSchema.parse);
   }
 
+  planDjLine(input: DJLineInput): Promise<DJLinePlan> {
+    return this.post("/api/llm/dj-line", input, djLinePlanSchema.parse);
+  }
+
+  repairTrackSpec(input: TrackRepairInput): Promise<TrackRepairPlan> {
+    return this.post("/api/llm/track-repair", input, trackRepairPlanSchema.parse);
+  }
+
   streamMusic(spec: TrackSpec, generationRate: number, callbacks: RemoteStreamCallbacks): RemoteStream {
     return this.openStream("/stream/music", { spec, generationRate }, callbacks);
   }
 
-  streamLyria(id: string, seed: MusicalSnapshot, callbacks: RemoteStreamCallbacks): RemoteStream {
-    return this.openStream("/stream/lyria", { id, seed }, callbacks);
+  streamTransition(spec: TransitionSpec, generationRate: number, callbacks: RemoteStreamCallbacks): RemoteStream {
+    return this.openStream("/stream/transition", { spec, generationRate }, callbacks);
   }
 
   streamTTS(id: string, text: string, callbacks: RemoteStreamCallbacks): RemoteStream {
     return this.openStream("/stream/tts", { id, text }, callbacks);
-  }
-
-  async steerLyria(id: string, plan: LyriaTransitionPlan): Promise<void> {
-    await this.post(`/api/lyria/${encodeURIComponent(id)}/steer`, plan, (value) => value);
-  }
-
-  async stopLyria(id: string): Promise<void> {
-    await this.post(`/api/lyria/${encodeURIComponent(id)}/stop`, {}, (value) => value);
   }
 
   async cancelMusic(id: string): Promise<void> {
@@ -154,7 +157,7 @@ export class ServerClient {
     base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
     base.pathname = path;
     base.search = new URLSearchParams({ payload: this.encodePayload(payload) }).toString();
-    const socket = new WebSocket(base);
+    const socket = new WebSocket(base.toString());
     socket.binaryType = "arraybuffer";
     socket.onmessage = (event) => {
       if (event.data instanceof ArrayBuffer) {
@@ -178,8 +181,10 @@ export class ServerClient {
         });
       } else if (message.type === "stream-end") {
         callbacks.onEnd();
+        socket.close(1000, "Stream completed");
       } else if (message.type === "stream-error") {
         callbacks.onError(new Error(message.error ?? "Remote stream failed"));
+        socket.close(1011, "Stream failed");
       }
     };
     socket.onerror = () => callbacks.onError(new Error(`WebSocket failed: ${path}`));

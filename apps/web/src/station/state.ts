@@ -15,30 +15,17 @@ export function createInitialState(): StationState {
   return {
     phase: "idle",
     running: false,
-    playback: {
-      trackId: null,
-      title: null,
-      playheadMs: 0,
-      durationMs: null,
-      remainingMs: null,
-      bufferedMs: 0
-    },
+    playback: { trackId: null, title: null, playheadMs: 0, durationMs: null, remainingMs: null, bufferedMs: 0 },
     intent: DEFAULT_INTENT,
-    nextTrack: {
-      status: "none",
-      bufferedMs: 0,
-      generatedMs: 0
-    },
-    continuity: {
-      status: "none",
-      bufferedMs: 0,
-      audible: false
-    },
+    intentRevision: 0,
+    nextTrack: { status: "none", bufferedMs: 0, generatedMs: 0 },
+    transition: { status: "none", bufferedMs: 0, generatedMs: 0 },
     dj: { speaking: false },
     recentEvents: [],
     recentCommands: [],
-    recentTrackSummaries: [],
+    recentTracks: [],
     recentUserMessages: [],
+    recentDjLines: [],
     horizonFiredForTrackId: null
   };
 }

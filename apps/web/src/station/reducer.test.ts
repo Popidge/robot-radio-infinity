@@ -1,535 +1,200 @@
 import { describe, expect, it } from "vitest";
-import type {
-  MusicalIntent,
-  StationEvent,
-  StationState,
-  TrackSpec,
-  UrgencyAssessment,
-  UserIntentPlan
-} from "@robot-radio/shared";
-import {
-  NEXT_TRACK_HORIZON_MS,
-  NEXT_TRACK_REQUEST_GUARD_MS,
-  PROMOTED_FRAGMENT_MS,
-  compileTrackSpec,
-  reduce
-} from "./reducer";
+import type { MusicalIntent, StationEvent, StationState, TrackDirective, TrackSpec, UserIntentPlan } from "@robot-radio/shared";
+import { NORMAL_CROSSFADE_MS, UNDERRUN_THREAT_MS, compileTrackSpec, reduce } from "./reducer";
 import { createInitialState } from "./state";
 
-const at = 100_000;
-
-const destinationIntent: MusicalIntent = {
-  description: "Heavy nocturnal industrial techno",
-  styles: ["industrial techno", "dark techno"],
-  mood: ["driving", "intense"],
-  energy: 0.82,
-  bpmRange: [122, 128],
+const intent: MusicalIntent = {
+  description: "nocturnal analogue synth soul",
+  styles: ["synth soul", "downtempo"],
+  mood: ["warm", "nocturnal"],
+  energy: 0.55,
+  bpmRange: [104, 112],
   keyPreference: "E minor",
-  vocals: "instrumental",
-  djTalkativeness: 0.25
+  vocals: "sparse original vocals",
+  djTalkativeness: 0.4
 };
 
-const userPlan: UserIntentPlan = {
-  destinationIntent,
-  nextTrack: {
-    description: "Distorted bass pulses and driving industrial drums",
-    styles: destinationIntent.styles,
-    mood: destinationIntent.mood,
-    energy: destinationIntent.energy,
-    bpm: 126,
-    key: "E minor",
-    vocals: "instrumental",
-    durationMs: 180_000
-  },
-  transition: {
-    sourceSummary: "Warm ambient techno",
-    destinationSummary: destinationIntent.description,
-    suggestedDurationMs: 6_000,
-    lyriaKeyframes: [
-      { at: 0, description: "Warm ambient techno", bpm: 116, key: "E minor", energy: 0.55 },
-      { at: 1, description: destinationIntent.description, bpm: 126, key: "E minor", energy: 0.82 }
-    ]
-  },
-  dj: { speak: true, text: "Adding more weight to the signal." }
+const darkerIntent: MusicalIntent = {
+  ...intent,
+  description: "dark, heavy German dub-metal with broken reggae rhythm",
+  styles: ["dub metal", "broken reggae"],
+  mood: ["dark", "urgent"],
+  energy: 0.9,
+  bpmRange: [138, 148]
 };
 
-const immediateAssessment: UrgencyAssessment = {
-  timing: "immediate",
-  interruptCurrentTrack: true,
-  confidence: 0.98
+const nextDirective: TrackDirective = {
+  title: "Iron After Midnight",
+  description: darkerIntent.description,
+  styles: darkerIntent.styles,
+  mood: darkerIntent.mood,
+  energy: darkerIntent.energy,
+  bpm: 144,
+  key: "D minor",
+  durationMs: 180_000
 };
 
-function playingState(remainingMs = NEXT_TRACK_HORIZON_MS + NEXT_TRACK_REQUEST_GUARD_MS + 10_000): StationState {
+const plan: UserIntentPlan = { destinationIntent: darkerIntent, nextTrack: nextDirective };
+
+function playingState(remainingMs = 90_000): StationState {
   return {
     ...createInitialState(),
     running: true,
     phase: "playing",
+    intent,
+    intentRevision: 1,
     playback: {
       trackId: "current",
-      title: "Current",
-      playheadMs: 180_000 - remainingMs,
+      title: "Signals Through Glass",
+      playheadMs: 90_000,
       durationMs: 180_000,
       remainingMs,
-      bpm: 116,
+      styleSummary: intent.description,
+      bpm: 108,
       key: "E minor",
-      styleSummary: "Warm ambient techno",
       energy: 0.55,
-      bufferedMs: remainingMs
+      bufferedMs: 90_000
     }
   };
 }
 
-function healthyContinuity(state = playingState(), leases: Array<"startup" | "user" | "horizon"> = ["user"]): StationState {
+function immediateAssessment() {
   return {
-    ...state,
-    continuity: {
-      status: "healthy",
-      streamId: "lyria-1",
-      bufferedMs: 5_000,
-      audible: false,
-      leases,
-      seed: { styleSummary: "Warm ambient techno", bpm: 116, key: "E minor", energy: 0.55 }
+    timing: "immediate" as const,
+    interruptCurrentTrack: true,
+    confidence: 0.98,
+    immediateTransition: {
+      description: "Strip the warm pulse down and grow a distorted offbeat rhythm.",
+      sourceSummary: intent.description,
+      destinationSketch: darkerIntent.description,
+      energyDirection: "up" as const
     }
   };
 }
 
-function trackSpec(id: string, description = "A continuation of the current sound"): TrackSpec {
-  return compileTrackSpec(
-    id,
-    { description, durationMs: 180_000 },
-    createInitialState().intent
-  );
+function event<T extends Omit<StationEvent, "at">>(value: T): StationEvent {
+  return { ...value, at: 1_000 } as StationEvent;
 }
 
-describe("station startup", () => {
-  it("plans the opening vibe before it starts audio providers", () => {
-    const result = reduce(createInitialState(), {
-      type: "START_STATION",
-      at,
-      sessionId: "session-1",
-      message: "Sunny jazz-house for a Sunday afternoon"
-    });
+describe("ElevenLabs station reducer", () => {
+  it("turns the opening vibe into one track generation after the initial plan", () => {
+    const started = reduce(createInitialState(), event({ type: "START_STATION", sessionId: "start-1", message: "rainy synth soul" }));
+    expect(started.commands.map((command) => command.type)).toEqual(["PLAN_INITIAL_INTENT"]);
 
-    expect(result.commands.map((command) => command.type)).toEqual(["PLAN_INITIAL_INTENT"]);
-    expect(result.state.startup?.status).toBe("planning");
-    expect(result.state.nextTrack.status).toBe("none");
-  });
-
-  it("starts Lyria and the opening track together after the first intent arrives", () => {
-    const started = reduce(createInitialState(), {
-      type: "START_STATION",
-      at,
-      sessionId: "session-2",
-      message: "Sunny jazz-house"
-    });
-    const requestId = started.state.startup?.requestId as string;
-    const result = reduce(started.state, {
+    const planned = reduce(started.state, event({
       type: "INITIAL_INTENT_RECEIVED",
-      at: at + 1,
-      requestId,
-      plan: { intent: destinationIntent }
-    });
-
-    expect(result.commands.map((command) => command.type)).toEqual(["PREWARM_CONTINUITY", "GENERATE_TRACK"]);
-    expect(result.state.intent).toEqual(destinationIntent);
-    expect(result.state.continuity.leases).toContain("startup");
+      requestId: "start-1",
+      plan: { intent, firstTrack: { title: "Wet Neon", description: intent.description } }
+    }));
+    expect(planned.commands[0]?.type).toBe("GENERATE_TRACK");
+    expect(planned.state.nextTrack.spec?.title).toBe("Wet Neon");
   });
 
-  it("plays the startup bridge when Lyria becomes healthy", () => {
-    const state: StationState = {
-      ...healthyContinuity(
-        {
-          ...createInitialState(),
-          running: true,
-          phase: "generating_next",
-          startup: { requestId: "initial-1", message: "A warm opening", status: "generating" },
-          nextTrack: {
-            status: "generating",
-            trackId: "opening",
-            spec: trackSpec("opening"),
-            bufferedMs: 0,
-            generatedMs: 0
-          }
-        },
-        ["startup"]
-      ),
-      playback: createInitialState().playback
-    };
-    const result = reduce(state, { type: "LYRIA_HEALTHY", at, streamId: "lyria-1" });
-
-    expect(result.commands.map((command) => command.type)).toEqual(["COMMIT_CONTINUITY", "FADE"]);
-    expect(result.commands[1]).toMatchObject({ type: "FADE", from: "silence", to: "lyria" });
-    expect(result.state.startup?.status).toBe("bridging");
+  it("starts urgency and full musical planning concurrently for each message", () => {
+    const result = reduce(playingState(), event({ type: "USER_MESSAGE", requestId: "u1", message: "change this now" }));
+    expect(result.commands.map((command) => command.type)).toEqual(["ASSESS_USER_MESSAGE", "PLAN_USER_INTENT"]);
+    expect(result.state.intentRevision).toBe(2);
+    expect(result.state.transition.status).toBe("none");
   });
 
-  it("fades the startup bridge into the opening track", () => {
-    const state: StationState = {
-      ...createInitialState(),
-      running: true,
-      phase: "lyria_bridge",
-      startup: { requestId: "initial-2", message: "A warm opening", status: "bridging" },
-      nextTrack: {
-        status: "buffering",
-        trackId: "opening",
-        spec: trackSpec("opening"),
-        bufferedMs: 10_000,
-        generatedMs: 10_000
-      },
-      continuity: {
-        status: "committed",
-        streamId: "lyria-1",
-        bufferedMs: 8_000,
-        audible: true,
-        bridgeStartedAt: at,
-        bridgeDurationMs: 1_500
-      }
-    };
-    const result = reduce(state, { type: "TRACK_READY", at: at + 2_000, trackId: "opening" });
-
-    expect(result.commands.map((command) => command.type)).toEqual(["FADE", "RELEASE_CONTINUITY"]);
-    expect(result.commands[0]).toMatchObject({ type: "FADE", from: "lyria", to: "track", trackId: "opening" });
-  });
-});
-
-describe("station request routing", () => {
-  it("prewarms continuity before the two concurrent user calls", () => {
-    const result = reduce(playingState(), {
-      type: "USER_MESSAGE",
-      at,
-      requestId: "request-1",
-      message: "Make the next track heavier"
-    });
-    expect(result.commands.map((command) => command.type)).toEqual([
-      "PREWARM_CONTINUITY",
-      "ASSESS_USER_MESSAGE",
-      "PLAN_USER_INTENT"
-    ]);
+  it("starts an immediate transition as soon as the fast classifier returns", () => {
+    const requested = reduce(playingState(), event({ type: "USER_MESSAGE", requestId: "u1", message: "change this now" })).state;
+    const classified = reduce(requested, event({ type: "URGENCY_ASSESSMENT_RECEIVED", requestId: "u1", assessment: immediateAssessment() }));
+    expect(classified.commands.map((command) => command.type)).toEqual(["GENERATE_TRANSITION"]);
+    expect(classified.state.transition.spec?.instrumental).toBe(true);
+    expect(classified.state.transition.spec?.durationMs).toBe(30_000);
   });
 
-  it("queues a well-ahead next-track request and releases speculative Lyria", () => {
-    const state = healthyContinuity({
-      ...playingState(),
-      pendingUser: { requestId: "request-2", message: "Next track heavier", applied: false, plan: userPlan }
-    });
-    const result = reduce(state, {
+  it("does not duplicate the classifier-started transition when the full plan arrives", () => {
+    let state = reduce(playingState(), event({ type: "USER_MESSAGE", requestId: "u1", message: "change this now" })).state;
+    state = reduce(state, event({ type: "URGENCY_ASSESSMENT_RECEIVED", requestId: "u1", assessment: immediateAssessment() })).state;
+    const resolved = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "u1", plan }));
+    expect(resolved.commands.map((command) => command.type)).toEqual(["GENERATE_TRACK", "PLAN_DJ_LINE"]);
+    expect(resolved.state.nextTrack.spec?.description).toBe(darkerIntent.description);
+    expect(resolved.state.intent).toEqual(darkerIntent);
+  });
+
+  it("holds a ready replacement until the transition has played its safe minimum", () => {
+    let state = reduce(playingState(), event({ type: "USER_MESSAGE", requestId: "u1", message: "change this now" })).state;
+    state = reduce(state, event({ type: "URGENCY_ASSESSMENT_RECEIVED", requestId: "u1", assessment: immediateAssessment() })).state;
+    state = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "u1", plan })).state;
+    const revision = state.intentRevision;
+    const transitionId = state.transition.transitionId!;
+    const trackId = state.nextTrack.trackId!;
+
+    const trackReady = reduce(state, event({ type: "TRACK_READY", trackId, revision }));
+    expect(trackReady.commands).toEqual([]);
+    const bridgeReady = reduce(trackReady.state, event({ type: "TRANSITION_READY", transitionId, revision }));
+    expect(bridgeReady.commands[0]?.type).toBe("PLAY_TRANSITION");
+    const audible = reduce(bridgeReady.state, event({ type: "TRANSITION_STARTED", transitionId, revision })).state;
+    const stillAudible = reduce(audible, event({
+      type: "TRANSITION_BUFFER_UPDATED", transitionId, revision, bufferedMs: 20_000, generatedMs: 30_000, generationRate: 5
+    })).state;
+    expect(stillAudible.transition.status).toBe("audible");
+    const safe = reduce(stillAudible, event({ type: "TRANSITION_MINIMUM_PLAYED", transitionId, revision }));
+    expect(safe.commands.some((command) => command.type === "FADE" && command.from === "transition" && command.to === "track")).toBe(true);
+    const started = reduce(safe.state, event({ type: "TRACK_STARTED", trackId, revision, spec: safe.state.nextTrack.spec! }));
+    expect(started.state.transition.status).toBe("none");
+    expect(started.state.phase).toBe("playing");
+  });
+
+  it("defers a future request and lets the horizon generate it naturally", () => {
+    let state = reduce(playingState(), event({ type: "USER_MESSAGE", requestId: "u2", message: "from now on, make it darker" })).state;
+    state = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "u2", plan })).state;
+    const resolved = reduce(state, event({
       type: "URGENCY_ASSESSMENT_RECEIVED",
-      at,
-      requestId: "request-2",
-      assessment: { timing: "next_track", interruptCurrentTrack: false, confidence: 0.98 }
-    });
+      requestId: "u2",
+      assessment: { timing: "future", interruptCurrentTrack: false, confidence: 0.9 }
+    }));
+    expect(resolved.commands).toEqual([]);
+    expect(resolved.state.queuedDirective?.title).toBe(nextDirective.title);
 
-    expect(result.state.intent).toEqual(destinationIntent);
-    expect(result.state.queuedDirective).toEqual(userPlan.nextTrack);
-    expect(result.state.pendingUser?.resolution).toBe("deferred");
-    expect(result.commands.map((command) => command.type)).toEqual(["RELEASE_CONTINUITY"]);
+    const horizon = reduce(resolved.state, event({ type: "NEXT_TRACK_HORIZON", requestId: "h1", trackId: "current" }));
+    expect(horizon.commands[0]?.type).toBe("GENERATE_TRACK");
+    expect(horizon.state.queuedDirective).toBeUndefined();
   });
 
-  it("generates a queued user track immediately when the horizon arrives", () => {
-    const state: StationState = {
-      ...playingState(NEXT_TRACK_HORIZON_MS),
-      intent: destinationIntent,
-      queuedDirective: userPlan.nextTrack
-    };
-    const result = reduce(state, {
-      type: "NEXT_TRACK_HORIZON",
-      at,
-      requestId: "horizon-1",
-      trackId: "current"
-    });
-
-    expect(result.commands.map((command) => command.type)).toEqual(["PREWARM_CONTINUITY", "GENERATE_TRACK"]);
-    expect(result.state.continuityPlanRequestId).toBeUndefined();
-    expect(result.state.nextTrack.spec?.description).toBe(userPlan.nextTrack.description);
-  });
-
-  it("asks the continuity planner at the horizon when no user track is queued", () => {
-    const result = reduce(playingState(NEXT_TRACK_HORIZON_MS), {
-      type: "NEXT_TRACK_HORIZON",
-      at,
-      requestId: "horizon-2",
-      trackId: "current"
-    });
-
-    expect(result.commands.map((command) => command.type)).toEqual(["PREWARM_CONTINUITY", "PLAN_CONTINUITY"]);
-  });
-
-  it("promotes a next-track request inside the guard band without fading early", () => {
-    const oldSpec = trackSpec("old-next");
-    const state = healthyContinuity({
-      ...playingState(NEXT_TRACK_HORIZON_MS + NEXT_TRACK_REQUEST_GUARD_MS - 1),
-      nextTrack: {
-        status: "buffering",
-        trackId: oldSpec.id,
-        spec: oldSpec,
-        bufferedMs: 2_000,
-        generatedMs: 2_000
-      },
-      pendingUser: { requestId: "request-3", message: "Next track heavier", applied: false, plan: userPlan }
-    });
-    const result = reduce(state, {
+  it("promotes a next-track request near the horizon to a generated bridge", () => {
+    let state = reduce(playingState(55_000), event({ type: "USER_MESSAGE", requestId: "u3", message: "next one should be much heavier" })).state;
+    state = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "u3", plan })).state;
+    const resolved = reduce(state, event({
       type: "URGENCY_ASSESSMENT_RECEIVED",
-      at,
-      requestId: "request-3",
-      assessment: { timing: "next_track", interruptCurrentTrack: false, confidence: 0.98 }
-    });
-
-    expect(result.state.pendingUser?.resolution).toBe("promoted");
-    expect(result.state.transitionFragment?.trackId).toBe("old-next");
-    expect(result.state.nextTrack.trackId).toBe("requested-request-3");
-    expect(result.commands.map((command) => command.type)).toEqual(["STEER_CONTINUITY", "GENERATE_TRACK"]);
-    expect(result.commands.some((command) => command.type === "FADE")).toBe(false);
+      requestId: "u3",
+      assessment: { timing: "next_track", interruptCurrentTrack: false, confidence: 0.95 }
+    }));
+    expect(resolved.commands.map((command) => command.type)).toEqual(["GENERATE_TRANSITION", "GENERATE_TRACK", "PLAN_DJ_LINE"]);
+    expect(resolved.state.pendingUser?.resolution).toBe("next");
   });
 
-  it("plays a healthy old-next fragment at the natural boundary", () => {
-    const fragment = trackSpec("old-next");
-    const desired = trackSpec("requested");
-    const state = healthyContinuity({
-      ...playingState(2_500),
-      pendingUser: {
-        requestId: "request-4",
-        message: "Next track heavier",
-        applied: true,
-        resolution: "promoted",
-        urgency: { timing: "next_track", interruptCurrentTrack: false, confidence: 0.98 },
-        plan: userPlan
-      },
-      transitionFragment: {
-        status: "ready",
-        trackId: fragment.id,
-        spec: fragment,
-        bufferedMs: 8_000,
-        generatedMs: 180_000
-      },
-      nextTrack: {
-        status: "generating",
-        trackId: desired.id,
-        spec: desired,
-        bufferedMs: 0,
-        generatedMs: 0
-      }
-    });
-    const result = reduce(state, {
-      type: "TRACK_PROGRESS",
-      at,
-      trackId: "current",
-      playheadMs: 177_500,
-      remainingMs: 2_500,
-      bufferedMs: 2_500
-    });
-
-    expect(result.commands).toEqual([
-      { type: "PLAY_TRACK_FRAGMENT", trackId: "old-next", fadeMs: 3_000, fragmentMs: PROMOTED_FRAGMENT_MS }
-    ]);
-  });
-
-  it("moves a transition fragment into Lyria and starts queued speech", () => {
-    const fragment = trackSpec("old-next");
-    const state = healthyContinuity({
-      ...playingState(PROMOTED_FRAGMENT_MS),
-      pendingUser: {
-        requestId: "request-5",
-        message: "Next track heavier",
-        applied: true,
-        resolution: "promoted",
-        urgency: { timing: "next_track", interruptCurrentTrack: false, confidence: 0.98 },
-        plan: userPlan
-      },
-      pendingBridgeSpeech: { speechId: "speech-request-5", text: "Adding more weight." },
-      transitionFragment: {
-        status: "ready",
-        trackId: fragment.id,
-        spec: fragment,
-        bufferedMs: 8_000,
-        generatedMs: 180_000
-      }
-    });
-    const result = reduce(state, { type: "TRACK_FRAGMENT_ENDED", at, trackId: "old-next" });
-
-    expect(result.commands.map((command) => command.type)).toEqual(["COMMIT_CONTINUITY", "FADE", "SPEAK", "CANCEL_TRACK"]);
-    expect(result.state.phase).toBe("lyria_bridge");
-  });
-
-  it("commits Lyria as soon as an immediate request and its prewarm are ready", () => {
-    const state = healthyContinuity({
-      ...playingState(),
-      pendingUser: { requestId: "request-6", message: "Switch now", applied: false }
-    });
-    const result = reduce(state, {
-      type: "URGENCY_ASSESSMENT_RECEIVED",
-      at,
-      requestId: "request-6",
-      assessment: immediateAssessment
-    });
-
-    expect(result.commands.map((command) => command.type)).toEqual(["COMMIT_CONTINUITY", "FADE"]);
-    expect(result.state.phase).toBe("lyria_bridge");
-  });
-
-  it("always generates and steers when the immediate plan arrives", () => {
+  it("generates an emergency transition when a pending stream threatens underrun", () => {
+    const spec = compileTrackSpec("next", 1, nextDirective, darkerIntent);
     const state: StationState = {
-      ...playingState(),
-      phase: "lyria_bridge",
-      continuity: {
-        status: "committed",
-        streamId: "lyria-1",
-        bufferedMs: 8_000,
-        audible: true,
-        bridgeStartedAt: at,
-        bridgeDurationMs: 4_000,
-        leases: ["user"]
-      },
-      pendingUser: {
-        requestId: "request-7",
-        message: "Switch now",
-        applied: false,
-        urgency: immediateAssessment
-      }
+      ...playingState(UNDERRUN_THREAT_MS - 1),
+      nextTrack: { status: "buffering", trackId: spec.id, revision: spec.revision, spec, bufferedMs: 2_000, generatedMs: 2_000 }
     };
-    const result = reduce(state, {
-      type: "USER_PLAN_RECEIVED",
-      at: at + 1,
-      requestId: "request-7",
-      plan: userPlan
-    });
-
-    expect(result.commands.map((command) => command.type)).toEqual(["STEER_CONTINUITY", "GENERATE_TRACK", "SPEAK"]);
-    expect(result.state.nextTrack.trackId).toBe("replacement-request-7");
-    expect(result.state.intent).toEqual(destinationIntent);
-    expect(result.state.phase).toBe("lyria_bridge");
+    const result = reduce(state, event({ type: "TRACK_PROGRESS", trackId: "current", playheadMs: 170_000, remainingMs: UNDERRUN_THREAT_MS - 1, bufferedMs: 5_000 }));
+    expect(result.commands[0]?.type).toBe("GENERATE_TRANSITION");
+    expect(result.state.transition.spec?.reason).toBe("underrun");
   });
 
-  it("keeps waiting for Lyria when an immediate replacement track wins the race", () => {
-    const desired = trackSpec("replacement-fast");
+  it("crossfades a healthy normal next track only at the end of the current track", () => {
+    const spec: TrackSpec = compileTrackSpec("next", 1, nextDirective, darkerIntent);
     const state: StationState = {
-      ...playingState(),
-      phase: "generating_next",
-      nextTrack: {
-        status: "buffering",
-        trackId: desired.id,
-        spec: desired,
-        bufferedMs: 8_000,
-        generatedMs: 8_000
-      },
-      continuity: {
-        status: "starting",
-        bufferedMs: 0,
-        audible: false,
-        leases: ["user"]
-      },
-      pendingUser: {
-        requestId: "request-fast-track",
-        message: "Switch now",
-        applied: true,
-        resolution: "immediate",
-        urgency: immediateAssessment,
-        plan: userPlan
-      }
+      ...playingState(NORMAL_CROSSFADE_MS),
+      nextTrack: { status: "ready", trackId: spec.id, revision: spec.revision, spec, bufferedMs: 20_000, generatedMs: 30_000 }
     };
-
-    const result = reduce(state, { type: "TRACK_READY", at, trackId: desired.id });
-
-    expect(result.commands).toEqual([]);
-    expect(result.state.nextTrack.status).toBe("ready");
-    expect(result.state.continuity.status).toBe("starting");
+    const result = reduce(state, event({ type: "TRACK_PROGRESS", trackId: "current", playheadMs: 177_000, remainingMs: NORMAL_CROSSFADE_MS, bufferedMs: 8_000 }));
+    expect(result.commands).toContainEqual({ type: "FADE", from: "track", to: "track", trackId: "next", durationMs: NORMAL_CROSSFADE_MS });
+    expect(result.commands.some((command) => command.type === "GENERATE_TRANSITION")).toBe(false);
   });
 
-  it("waits for the planned bridge duration before it plays a ready replacement", () => {
-    const desired = trackSpec("replacement");
-    const state: StationState = {
-      ...playingState(),
-      phase: "lyria_bridge",
-      nextTrack: {
-        status: "buffering",
-        trackId: desired.id,
-        spec: desired,
-        bufferedMs: 10_000,
-        generatedMs: 10_000
-      },
-      continuity: {
-        status: "committed",
-        streamId: "lyria-1",
-        bufferedMs: 8_000,
-        audible: true,
-        bridgeStartedAt: at,
-        bridgeDurationMs: 6_000
-      }
-    };
-    const ready = reduce(state, { type: "TRACK_READY", at: at + 2_000, trackId: desired.id });
-    expect(ready.commands).toEqual([]);
-
-    const elapsed = reduce(ready.state, {
-      type: "LYRIA_BUFFER_UPDATED",
-      at: at + 6_100,
-      streamId: "lyria-1",
-      bufferedMs: 9_000
-    });
-    expect(elapsed.commands.map((command) => command.type)).toEqual(["FADE", "RELEASE_CONTINUITY"]);
-  });
-
-  it("releases Lyria for a conversation-only message", () => {
-    const state = healthyContinuity({
-      ...playingState(),
-      pendingUser: { requestId: "request-8", message: "This is great", applied: false, plan: userPlan }
-    });
-    const result = reduce(state, {
-      type: "URGENCY_ASSESSMENT_RECEIVED",
-      at,
-      requestId: "request-8",
-      assessment: { timing: "conversation_only", interruptCurrentTrack: false, confidence: 0.98 }
-    });
-
-    expect(result.commands.map((command) => command.type)).toEqual(["RELEASE_CONTINUITY"]);
-    expect(result.state.intent).toEqual(createInitialState().intent);
-  });
-});
-
-describe("station recovery", () => {
-  it("generates a deterministic fallback when the horizon planner fails", () => {
-    const state: StationState = {
-      ...healthyContinuity(playingState(NEXT_TRACK_HORIZON_MS), ["horizon"]),
-      continuityPlanRequestId: "horizon-failed",
-      nextTrack: { status: "planning", bufferedMs: 0, generatedMs: 0 }
-    };
-    const result = reduce(state, {
-      type: "CONTINUITY_PLAN_FAILED",
-      at,
-      requestId: "horizon-failed",
-      error: "Planner timed out"
-    });
-
-    expect(result.commands.map((command) => command.type)).toEqual(["GENERATE_TRACK"]);
-    expect(result.state.nextTrack.trackId).toBe("fallback-horizon-failed");
-  });
-
-  it("commits healthy Lyria when an underrun threatens", () => {
-    const next = trackSpec("next");
-    const state: StationState = {
-      ...healthyContinuity(playingState(7_000), ["horizon"]),
-      nextTrack: { status: "buffering", trackId: next.id, spec: next, bufferedMs: 2_000, generatedMs: 2_000 }
-    };
-    const event: StationEvent = {
-      type: "TRACK_PROGRESS",
-      at,
-      trackId: "current",
-      playheadMs: 173_000,
-      remainingMs: 7_000,
-      bufferedMs: 7_000
-    };
-    const result = reduce(state, event);
-
-    expect(result.commands.map((command) => command.type)).toEqual(["COMMIT_CONTINUITY", "FADE"]);
-    expect(result.state.continuity.audible).toBe(true);
-  });
-
-  it("uses the duration resolved from received PCM for an audible track", () => {
-    const result = reduce(playingState(), {
-      type: "TRACK_DURATION_RESOLVED",
-      at,
-      trackId: "current",
-      durationMs: 175_650
-    });
-
-    expect(result.state.playback.durationMs).toBe(175_650);
-    expect(result.state.playback.remainingMs).toBe(175_650 - result.state.playback.playheadMs);
+  it("ignores stale provider events after a newer listener request", () => {
+    const first = reduce(playingState(), event({ type: "USER_MESSAGE", requestId: "old", message: "change now" })).state;
+    const oldClassified = reduce(first, event({ type: "URGENCY_ASSESSMENT_RECEIVED", requestId: "old", assessment: immediateAssessment() })).state;
+    const newer = reduce(oldClassified, event({ type: "USER_MESSAGE", requestId: "new", message: "actually, calm jazz" })).state;
+    const stale = reduce(newer, event({ type: "USER_PLAN_RECEIVED", requestId: "old", plan }));
+    expect(stale.commands).toEqual([]);
+    expect(stale.state.intentRevision).toBe(3);
+    expect(stale.state.nextTrack.status).toBe("none");
   });
 });

@@ -2,8 +2,12 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import {
   continuityInputSchema,
   continuityPlanSchema,
+  djLineInputSchema,
+  djLinePlanSchema,
   initialIntentInputSchema,
   initialIntentPlanSchema,
+  trackRepairInputSchema,
+  trackRepairPlanSchema,
   urgencyAssessmentSchema,
   urgencyInputSchema,
   userIntentInputSchema,
@@ -64,6 +68,31 @@ export async function handleLLMRoute(
       logger?.log("info", "llm.continuity_plan_started", { requestId: input.requestId, input });
       const result = continuityPlanSchema.parse(await provider.planContinuity(input));
       logger?.log("info", "llm.continuity_plan_completed", {
+        requestId: input.requestId,
+        durationMs: performance.now() - startedAt,
+        result
+      });
+      sendJson(response, 200, result);
+      return true;
+    }
+    if (pathname === "/api/llm/dj-line") {
+      const input = djLineInputSchema.parse(await readJson(request));
+      logger?.log("info", "llm.dj_line_started", { requestId: input.requestId, input });
+      const result = djLinePlanSchema.parse(await provider.planDjLine(input));
+      logger?.log("info", "llm.dj_line_completed", { requestId: input.requestId, durationMs: performance.now() - startedAt, result });
+      sendJson(response, 200, result);
+      return true;
+    }
+    if (pathname === "/api/llm/track-repair") {
+      const input = trackRepairInputSchema.parse(await readJson(request));
+      logger?.log("info", "llm.track_repair_started", {
+        requestId: input.requestId,
+        attempt: input.attempt,
+        rejectedTrackId: input.rejectedSpec.id,
+        providerError: input.providerError
+      });
+      const result = trackRepairPlanSchema.parse(await provider.repairTrackSpec(input));
+      logger?.log("info", "llm.track_repair_completed", {
         requestId: input.requestId,
         durationMs: performance.now() - startedAt,
         result

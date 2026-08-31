@@ -2,11 +2,10 @@ import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import type { Socket } from "node:net";
 import {
-  musicalSnapshotSchema,
   trackSpecSchema,
+  transitionSpecSchema,
   ttsRequestSchema,
   type AudioStream,
-  type ContinuityStream,
   type MusicStream
 } from "@robot-radio/shared";
 import { WebSocket, WebSocketServer } from "ws";
@@ -14,13 +13,12 @@ import { createDebugLogger } from "./debug/logger";
 import { createProviders } from "./providers";
 import { handleDebugRoute } from "./routes/debug";
 import { handleLLMRoute } from "./routes/llm";
-import { handleLyriaRoute } from "./routes/lyria";
 import { handleMusicRoute } from "./routes/music";
 import { sendJson } from "./routes/http";
 import { handleTTSRoute } from "./routes/tts";
 import { handleWebRoute, webDistDirectory } from "./web/static";
 
-type StreamKind = "music" | "lyria" | "tts";
+type StreamKind = "music" | "transition" | "tts";
 
 interface StreamContext {
   connectionId: string;
@@ -42,17 +40,7 @@ const port = Number(process.env.PORT ?? 8787);
 const logger = createDebugLogger();
 const providers = (() => {
   try {
-    return createProviders({
-      googleAudioTelemetry: (telemetry) => {
-        logger.log("debug", "provider.audio_telemetry", {
-          telemetryType: telemetry.type,
-          provider: telemetry.provider,
-          streamId: telemetry.streamId,
-          providerMonotonicMs: telemetry.at,
-          details: telemetry
-        });
-      }
-    });
+    return createProviders();
   } catch (error) {
     logger.error("server.provider_initialization_failed", error);
     if (logger.filePath) console.error(`Provider startup failed. Debug log: ${logger.filePath}`);
@@ -60,7 +48,7 @@ const providers = (() => {
     throw error;
   }
 })();
-const { music: musicProvider, lyria: lyriaProvider, tts: ttsProvider, llm: llmProvider } = providers;
+const { music: musicProvider, transitions: transitionProvider, tts: ttsProvider, llm: llmProvider } = providers;
 
 logger.log("info", "server.run_started", {
   pid: process.pid,
@@ -68,13 +56,11 @@ logger.log("info", "server.run_started", {
   port,
   providers: providers.selections,
   models: {
-    llm: process.env.GEMINI_LLM_MODEL ?? "gemini-3.7-flash",
-    llmFast: process.env.GEMINI_FAST_LLM_MODEL ?? "gemini-3.5-flash-lite",
-    music: process.env.GEMINI_MUSIC_MODEL ?? "lyria-3-pro-preview",
-    lyria: process.env.GEMINI_LYRIA_REALTIME_MODEL ?? "models/lyria-realtime-exp",
-    tts: process.env.GEMINI_TTS_MODEL ?? "gemini-3.1-flash-tts-preview"
-  },
-  ttsDelivery: process.env.GEMINI_TTS_DELIVERY ?? "stream"
+    llm: process.env.OPENAI_LLM_MODEL ?? "gpt-5.6-luna",
+    llmFast: process.env.OPENAI_FAST_LLM_MODEL ?? "gpt-5.6-luna",
+    music: process.env.ELEVENLABS_MUSIC_MODEL ?? "music_v2",
+    tts: process.env.ELEVENLABS_TTS_MODEL ?? "eleven_flash_v2_5"
+  }
 });
 
 const server = createServer(async (request, response) => {
@@ -113,7 +99,6 @@ const server = createServer(async (request, response) => {
   if (await handleDebugRoute(url.pathname, request, response, logger)) return;
   if (await handleLLMRoute(url.pathname, request, response, llmProvider, logger)) return;
   if (await handleMusicRoute(url.pathname, request, response, musicProvider, logger)) return;
-  if (await handleLyriaRoute(url.pathname, request, response, lyriaProvider, logger)) return;
   if (handleTTSRoute(url.pathname, request, response, providers.selections.tts)) return;
   if (await handleWebRoute(url.pathname, request, response)) return;
   sendJson(response, 404, { error: "Route not found" });
@@ -123,7 +108,7 @@ const webSocketServer = new WebSocketServer({ noServer: true });
 
 async function pipeStream(
   webSocket: WebSocket,
-  stream: MusicStream | ContinuityStream | AudioStream,
+  stream: MusicStream | AudioStream,
   context: StreamContext
 ): Promise<void> {
   const startedAt = performance.now();
@@ -258,17 +243,17 @@ webSocketServer.on("connection", async (webSocket, request) => {
       return;
     }
 
-    if (url.pathname === "/stream/lyria") {
-      const id = String("id" in payload ? payload.id : "");
-      const seed = musicalSnapshotSchema.parse("seed" in payload ? payload.seed : undefined);
-      const context: StreamContext = { connectionId, kind: "lyria", streamId: id };
-      logger.log("info", "lyria.generation_requested", { ...context, seed });
+    if (url.pathname === "/stream/transition") {
+      const spec = transitionSpecSchema.parse("spec" in payload ? payload.spec : undefined);
+      const generationRate = Number("generationRate" in payload ? payload.generationRate : 5);
+      const context: StreamContext = { connectionId, kind: "transition", streamId: spec.id };
+      logger.log("info", "transition.generation_requested", { ...context, spec, requestedGenerationRate: generationRate });
       const release = (): void => {
-        logger.log("info", "lyria.stop_on_disconnect", { ...context });
-        void lyriaProvider.stop(id);
+        logger.log("info", "transition.cancel_on_disconnect", { ...context });
+        void transitionProvider.cancel(spec.id);
       };
       webSocket.once("close", release);
-      const stream = await lyriaProvider.start(id, seed);
+      const stream = await transitionProvider.generate(spec, generationRate);
       if (webSocket.readyState !== WebSocket.OPEN) {
         release();
         return;
@@ -277,8 +262,8 @@ webSocketServer.on("connection", async (webSocket, request) => {
         await pipeStream(webSocket, stream, context);
       } finally {
         webSocket.off("close", release);
-        await lyriaProvider.stop(id);
-        logger.log("debug", "lyria.provider_released", { ...context });
+        await transitionProvider.cancel(spec.id);
+        logger.log("debug", "transition.provider_released", { ...context });
       }
       return;
     }
@@ -287,7 +272,14 @@ webSocketServer.on("connection", async (webSocket, request) => {
       const requestPayload = ttsRequestSchema.parse(payload);
       const context: StreamContext = { connectionId, kind: "tts", streamId: requestPayload.id };
       logger.log("info", "tts.generation_requested", { ...context, text: requestPayload.text });
-      await pipeStream(webSocket, await ttsProvider.speak(requestPayload.id, requestPayload.text), context);
+      const release = (): void => { void ttsProvider.cancel(requestPayload.id) };
+      webSocket.once("close", release);
+      try {
+        await pipeStream(webSocket, await ttsProvider.speak(requestPayload.id, requestPayload.text), context);
+      } finally {
+        webSocket.off("close", release);
+        await ttsProvider.cancel(requestPayload.id);
+      }
       return;
     }
     logger.log("warn", "websocket.unknown_route", { connectionId, pathname: url.pathname });
@@ -332,8 +324,8 @@ process.once("exit", (code) => {
   logger.close();
 });
 
-server.listen(port, () => {
+server.listen(port, "0.0.0.0", () => {
   logger.log("info", "server.listening", { port, webDistDirectory: webDistDirectory() });
-  console.log(`Robot Radio server listening on http://localhost:${port}`);
+  console.log(`Robot Radio server listening on http://0.0.0.0:${port}`);
   if (logger.filePath) console.log(`Structured debug log: ${logger.filePath}`);
 });

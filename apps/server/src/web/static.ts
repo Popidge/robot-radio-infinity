@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, isAbsolute, relative, resolve } from "node:path";
@@ -18,7 +19,14 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 export function webDistDirectory(cwd = process.cwd()): string {
-  return resolve(cwd, process.env.ROBOT_RADIO_WEB_DIST_DIR ?? "../web/dist");
+  if (process.env.ROBOT_RADIO_WEB_DIST_DIR) {
+    return resolve(cwd, process.env.ROBOT_RADIO_WEB_DIST_DIR);
+  }
+  const rootCandidate = resolve(cwd, "apps/web/dist");
+  if (existsSync(rootCandidate)) return rootCandidate;
+  const packageCandidate = resolve(cwd, "../web/dist");
+  if (existsSync(packageCandidate)) return packageCandidate;
+  return rootCandidate;
 }
 
 async function isFile(path: string): Promise<boolean> {

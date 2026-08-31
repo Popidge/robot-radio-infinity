@@ -1,6 +1,6 @@
-import pcmPlayerWorkletUrl from "./pcm-player.worklet.ts?worker&url";
+import pcmPlayerWorkletCode from "./pcm-player.worklet.ts?raw";
 
-type SourceKind = "track" | "lyria" | "tts";
+type SourceKind = "track" | "transition" | "tts";
 
 interface SourceMetrics {
   type: "metrics";
@@ -37,11 +37,12 @@ export class AudioEngine {
   private musicBus: GainNode | null = null;
   private currentTrackBus: GainNode | null = null;
   private incomingTrackBus: GainNode | null = null;
-  private lyriaBus: GainNode | null = null;
+  private transitionBus: GainNode | null = null;
   private ttsBus: GainNode | null = null;
+  private analyser: AnalyserNode | null = null;
   private currentTrack: PcmSource | null = null;
   private incomingTracks = new Map<string, PcmSource>();
-  private lyria: PcmSource | null = null;
+  private transition: PcmSource | null = null;
   private ttsSources = new Map<string, PcmSource>();
   private trackStartedAt = 0;
 
@@ -51,14 +52,23 @@ export class AudioEngine {
       return;
     }
     this.context = new AudioContext({ sampleRate: 48_000, latencyHint: "playback" });
-    await this.context.audioWorklet.addModule(pcmPlayerWorkletUrl);
+    const workletBlob = new Blob([pcmPlayerWorkletCode], { type: "application/javascript" });
+    const workletUrl = URL.createObjectURL(workletBlob);
+    try {
+      await this.context.audioWorklet.addModule(workletUrl);
+    } finally {
+      URL.revokeObjectURL(workletUrl);
+    }
 
     this.masterBus = this.context.createGain();
     this.musicBus = this.context.createGain();
     this.currentTrackBus = this.context.createGain();
     this.incomingTrackBus = this.context.createGain();
-    this.lyriaBus = this.context.createGain();
+    this.transitionBus = this.context.createGain();
     this.ttsBus = this.context.createGain();
+    this.analyser = this.context.createAnalyser();
+    this.analyser.fftSize = 256;
+    this.analyser.smoothingTimeConstant = 0.82;
     const compressor = this.context.createDynamicsCompressor();
     compressor.threshold.value = -6;
     compressor.knee.value = 8;
@@ -68,10 +78,11 @@ export class AudioEngine {
 
     this.currentTrackBus.connect(this.musicBus);
     this.incomingTrackBus.connect(this.musicBus);
-    this.lyriaBus.connect(this.musicBus);
+    this.transitionBus.connect(this.musicBus);
     this.musicBus.connect(this.masterBus);
     this.ttsBus.connect(this.masterBus);
-    this.masterBus.connect(compressor);
+    this.masterBus.connect(this.analyser);
+    this.analyser.connect(compressor);
     compressor.connect(this.context.destination);
     this.masterBus.gain.value = 0.82;
     await this.context.resume();
@@ -87,7 +98,7 @@ export class AudioEngine {
     const gain = this.context.createGain();
     gain.gain.value = 0;
     node.connect(gain);
-    const bus = kind === "lyria" ? this.lyriaBus : kind === "tts" ? this.ttsBus : this.incomingTrackBus;
+    const bus = kind === "transition" ? this.transitionBus : kind === "tts" ? this.ttsBus : this.incomingTrackBus;
     if (!bus) throw new Error("Audio bus is not initialized");
     gain.connect(bus);
     const source: PcmSource = {
@@ -129,10 +140,10 @@ export class AudioEngine {
     if (source) this.dispose(source);
   }
 
-  createLyria(id: string): void {
-    if (this.lyria?.id === id) return;
-    if (this.lyria) this.dispose(this.lyria);
-    this.lyria = this.makeSource(id, "lyria", null);
+  createTransition(id: string, durationMs: number, onEnded?: () => void): void {
+    if (this.transition?.id === id) return;
+    if (this.transition) this.dispose(this.transition);
+    this.transition = this.makeSource(id, "transition", durationMs, onEnded);
   }
 
   createTTS(id: string, durationMs: number | null, onEnded: () => void): void {
@@ -180,22 +191,22 @@ export class AudioEngine {
     if (source) this.dispose(source);
   }
 
-  commitContinuity(): void {
-    if (!this.lyria || this.lyria.playing) return;
-    this.lyria.playing = true;
-    this.lyria.node.port.postMessage({ type: "play" });
+  private startTransition(): void {
+    if (!this.transition || this.transition.playing) return;
+    this.transition.playing = true;
+    this.transition.node.port.postMessage({ type: "play" });
   }
 
-  fadeInLyria(durationMs: number): void {
-    if (!this.lyria) return;
-    this.commitContinuity();
-    this.ramp(this.lyria.gain.gain, 1, durationMs);
+  fadeInTransition(durationMs: number): void {
+    if (!this.transition) return;
+    this.startTransition();
+    this.ramp(this.transition.gain.gain, 1, durationMs);
   }
 
-  fadeTrackToLyria(durationMs: number): void {
-    if (!this.lyria) return;
-    this.commitContinuity();
-    this.ramp(this.lyria.gain.gain, 1, durationMs);
+  fadeTrackToTransition(durationMs: number): void {
+    if (!this.transition) return;
+    this.startTransition();
+    this.ramp(this.transition.gain.gain, 1, durationMs);
     const oldTrack = this.currentTrack;
     if (oldTrack) {
       this.ramp(oldTrack.gain.gain, 0, durationMs);
@@ -227,23 +238,23 @@ export class AudioEngine {
     this.trackStartedAt = this.now();
   }
 
-  fadeLyriaToTrack(id: string, durationMs: number): void {
+  fadeTransitionToTrack(id: string, durationMs: number): void {
     this.crossfadeToTrack(id, durationMs);
-    const oldLyria = this.lyria;
-    if (oldLyria) {
-      this.ramp(oldLyria.gain.gain, 0, durationMs);
+    const oldTransition = this.transition;
+    if (oldTransition) {
+      this.ramp(oldTransition.gain.gain, 0, durationMs);
       window.setTimeout(() => {
-        if (this.lyria === oldLyria) this.lyria = null;
-        this.dispose(oldLyria);
+        if (this.transition === oldTransition) this.transition = null;
+        this.dispose(oldTransition);
       }, durationMs + 80);
     }
   }
 
-  releaseLyria(afterMs = 0): void {
-    const source = this.lyria;
+  discardTransition(afterMs = 0): void {
+    const source = this.transition;
     if (!source) return;
     window.setTimeout(() => {
-      if (this.lyria === source) this.lyria = null;
+      if (this.transition === source) this.transition = null;
       this.dispose(source);
     }, afterMs);
   }
@@ -265,19 +276,30 @@ export class AudioEngine {
     };
   }
 
-  hasLyria(): boolean {
-    return this.lyria !== null;
+  hasTransition(): boolean {
+    return this.transition !== null;
+  }
+
+  readSpectrum(target: Uint8Array<ArrayBuffer>): boolean {
+    if (!this.analyser || target.length !== this.analyser.frequencyBinCount) return false;
+    this.analyser.getByteFrequencyData(target);
+    return true;
+  }
+
+  spectrumBinCount(): number {
+    return this.analyser?.frequencyBinCount ?? 128;
   }
 
   async stopAll(): Promise<void> {
     for (const source of this.incomingTracks.values()) this.dispose(source);
     for (const source of this.ttsSources.values()) this.dispose(source);
     if (this.currentTrack) this.dispose(this.currentTrack);
-    if (this.lyria) this.dispose(this.lyria);
+    if (this.transition) this.dispose(this.transition);
     this.incomingTracks.clear();
     this.ttsSources.clear();
     this.currentTrack = null;
-    this.lyria = null;
+    this.transition = null;
+    this.analyser = null;
     const context = this.context;
     this.context = null;
     if (context) await context.close();
@@ -285,7 +307,7 @@ export class AudioEngine {
 
   private findSource(id: string): PcmSource | undefined {
     if (this.currentTrack?.id === id) return this.currentTrack;
-    if (this.lyria?.id === id) return this.lyria;
+    if (this.transition?.id === id) return this.transition;
     return this.incomingTracks.get(id) ?? this.ttsSources.get(id);
   }
 

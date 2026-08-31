@@ -12,6 +12,7 @@ function durationText(durationMs: number): string {
 export function compileLyria3Prompt(spec: TrackSpec): string {
   return [
     `Create a ${durationText(spec.durationMs)} complete music track.`,
+    `Working title: "${spec.title}". Use this as creative context for the composition, imagery, and any original lyrics.`,
     `Musical direction: ${spec.description}.`,
     `Styles: ${spec.styles.join(", ")}.`,
     `Mood: ${spec.mood.join(", ")}.`,

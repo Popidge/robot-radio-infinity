@@ -136,6 +136,7 @@ try {
     const provider = new GoogleLyria3MusicProvider(apiKey, telemetry, model);
     const spec: TrackSpec = {
       id: "profile-lyria-3-pro",
+      revision: 0,
       title: "Lyria 3 Pro profile",
       description: "Nocturnal melodic techno with warm analog synths and a patient, evolving arrangement",
       styles: ["melodic techno", "ambient techno"],

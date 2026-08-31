@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@robot-radio/shared": "workspace:*",
+    "@robot-radio/shared": "*",
     "@vitejs/plugin-react": "^5.0.2",
     "vite": "^7.1.3",
     "react": "^19.1.1",

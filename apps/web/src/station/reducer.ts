@@ -1,13 +1,16 @@
 import type {
   ContinuityInput,
+  DJLineInput,
   MusicalIntent,
   MusicalSnapshot,
-  NextTrackState,
   StationCommand,
   StationEvent,
   StationState,
   TrackDirective,
   TrackSpec,
+  TransitionSketch,
+  TransitionSpec,
+  UrgencyAssessment,
   UrgencyInput,
   UserIntentInput
 } from "@robot-radio/shared";
@@ -15,23 +18,25 @@ import { createInitialState } from "./state";
 
 export const NEXT_TRACK_HORIZON_MS = Number(import.meta.env.VITE_NEXT_TRACK_HORIZON_MS ?? 50_000);
 export const NEXT_TRACK_REQUEST_GUARD_MS = 10_000;
-export const SAFE_START_BUFFER_MS = 4_000;
-export const CONTINUITY_HEALTHY_BUFFER_MS = 3_000;
-export const UNDERRUN_THREAT_MS = 8_000;
+export const SAFE_START_BUFFER_MS = 10_000;
+export const TRANSITION_SAFE_BUFFER_MS = 8_000;
+export const UNDERRUN_THREAT_MS = 15_000;
 export const NORMAL_CROSSFADE_MS = 3_000;
 export const IMMEDIATE_CROSSFADE_MS = 1_800;
-export const DEFAULT_BRIDGE_MS = 4_000;
-export const STARTUP_BRIDGE_MS = 1_500;
-export const PROMOTED_FRAGMENT_MS = 4_000;
+export const TRANSITION_MINIMUM_PLAY_MS = 8_000;
+export const TRANSITION_DURATION_MS = 30_000;
+export const MAX_TRACK_REPAIR_ATTEMPTS = 2;
 export const PROGRAM_TRACK_DURATION_MS = Number(import.meta.env.VITE_PROGRAM_TRACK_DURATION_MS ?? 180_000);
 
-export interface Reduction {
-  state: StationState;
-  commands: StationCommand[];
+export interface Reduction { state: StationState; commands: StationCommand[] }
+
+function midpoint(range?: [number, number]): number | undefined {
+  return range ? Math.round((range[0] + range[1]) / 2) : undefined;
 }
 
 function snapshot(state: StationState): MusicalSnapshot {
   return {
+    title: state.playback.title ?? undefined,
     styleSummary: state.playback.styleSummary ?? state.intent.description,
     bpm: state.playback.bpm ?? midpoint(state.intent.bpmRange),
     key: state.playback.key ?? state.intent.keyPreference,
@@ -39,47 +44,62 @@ function snapshot(state: StationState): MusicalSnapshot {
   };
 }
 
-function snapshotFromIntent(intent: MusicalIntent): MusicalSnapshot {
+export function compileTrackSpec(id: string, revision: number, directive: TrackDirective, intent: MusicalIntent): TrackSpec {
   return {
-    styleSummary: intent.description,
-    bpm: midpoint(intent.bpmRange),
-    key: intent.keyPreference,
-    energy: intent.energy
+    id,
+    revision,
+    title: directive.title.trim() || "Untitled Signal",
+    description: directive.description,
+    styles: directive.styles ?? intent.styles,
+    mood: directive.mood ?? intent.mood,
+    energy: directive.energy ?? intent.energy ?? 0.6,
+    bpm: directive.bpm ?? midpoint(intent.bpmRange) ?? 116,
+    key: directive.key ?? intent.keyPreference ?? "E minor",
+    vocals: directive.vocals ?? intent.vocals,
+    language: directive.language ?? intent.language,
+    durationMs: directive.durationMs ?? PROGRAM_TRACK_DURATION_MS,
+    sections: directive.sections
   };
 }
 
-function midpoint(range?: [number, number]): number | undefined {
-  return range ? Math.round((range[0] + range[1]) / 2) : undefined;
-}
-
-function directiveFromIntent(intent: MusicalIntent): TrackDirective {
+function compileTransitionSpec(
+  id: string,
+  revision: number,
+  state: StationState,
+  sketch: TransitionSketch | undefined,
+  destination: MusicalIntent,
+  reason: TransitionSpec["reason"]
+): TransitionSpec {
+  const direction = sketch?.energyDirection ?? "steady";
+  const sourceEnergy = state.playback.energy ?? state.intent.energy ?? 0.55;
+  const destinationEnergy = destination.energy ?? sourceEnergy;
   return {
-    description: intent.description,
-    styles: intent.styles,
-    mood: intent.mood,
-    energy: intent.energy,
-    bpm: midpoint(intent.bpmRange),
-    key: intent.keyPreference,
-    vocals: intent.vocals,
-    language: intent.language,
-    durationMs: PROGRAM_TRACK_DURATION_MS
+    id,
+    revision,
+    description: sketch?.description ?? `An instrumental radio bridge that naturally moves from ${snapshot(state).styleSummary} toward ${destination.description}.`,
+    sourceSummary: sketch?.sourceSummary ?? snapshot(state).styleSummary,
+    destinationSummary: sketch?.destinationSketch ?? destination.description,
+    styles: [...new Set([...state.intent.styles.slice(0, 3), ...destination.styles.slice(0, 3)])].slice(0, 6),
+    mood: [...new Set([...state.intent.mood.slice(0, 3), ...destination.mood.slice(0, 3)])].slice(0, 6),
+    energy: direction === "up" ? Math.max(sourceEnergy, destinationEnergy) : direction === "down" ? Math.min(sourceEnergy, destinationEnergy) : (sourceEnergy + destinationEnergy) / 2,
+    bpm: midpoint(destination.bpmRange) ?? state.playback.bpm ?? midpoint(state.intent.bpmRange) ?? 116,
+    durationMs: TRANSITION_DURATION_MS,
+    instrumental: true,
+    reason
   };
 }
 
 function urgencyInput(state: StationState, requestId: string, message: string): UrgencyInput {
-  return {
-    requestId,
-    message,
-    currentIntent: state.intent,
-    currentTrack: state.playback.trackId ? snapshot(state) : null
-  };
+  return { requestId, message, currentIntent: state.intent, currentTrack: state.playback.trackId ? snapshot(state) : null };
 }
 
 function userIntentInput(state: StationState, requestId: string, message: string): UserIntentInput {
   return {
     ...urgencyInput(state, requestId, message),
     remainingMs: state.playback.remainingMs,
-    recentTrackSummaries: state.recentTrackSummaries.slice(-5)
+    recentTracks: state.recentTracks.slice(-6),
+    recentUserMessages: state.recentUserMessages.slice(-6),
+    recentDjLines: state.recentDjLines.slice(-6)
   };
 }
 
@@ -88,810 +108,439 @@ function continuityInput(state: StationState, requestId: string): ContinuityInpu
     requestId,
     currentIntent: state.intent,
     currentTrack: state.playback.trackId ? snapshot(state) : null,
-    recentTrackSummaries: state.recentTrackSummaries.slice(-5),
-    recentUserMessages: state.recentUserMessages.slice(-5)
+    recentTracks: state.recentTracks.slice(-6),
+    recentUserMessages: state.recentUserMessages.slice(-6),
+    recentDjLines: state.recentDjLines.slice(-6)
   };
 }
 
-export function compileTrackSpec(id: string, directive: TrackDirective, intent: MusicalIntent): TrackSpec {
-  const bpm = directive.bpm ?? midpoint(intent.bpmRange) ?? 116;
+function djInput(
+  state: StationState,
+  requestId: string,
+  reason: DJLineInput["reason"],
+  userMessage?: string,
+  nextTrack?: TrackDirective
+): DJLineInput {
   return {
-    id,
-    title: directive.description.length > 48 ? `${directive.description.slice(0, 45)}…` : directive.description,
-    description: directive.description,
-    styles: directive.styles ?? intent.styles,
-    mood: directive.mood ?? intent.mood,
-    energy: directive.energy ?? intent.energy ?? 0.6,
-    bpm,
-    key: directive.key ?? intent.keyPreference ?? "E minor",
-    vocals: directive.vocals ?? intent.vocals,
-    language: directive.language ?? intent.language,
-    durationMs: directive.durationMs ?? PROGRAM_TRACK_DURATION_MS
+    requestId,
+    userMessage,
+    reason,
+    currentIntent: state.intent,
+    currentTrack: state.playback.trackId ? snapshot(state) : null,
+    nextTrack,
+    recentTracks: state.recentTracks.slice(-6),
+    recentUserMessages: state.recentUserMessages.slice(-6),
+    recentDjLines: state.recentDjLines.slice(-6)
   };
 }
 
-function append<T>(items: T[], item: T, limit: number): T[] {
-  return [...items, item].slice(-limit);
-}
+function append<T>(items: T[], item: T, limit: number): T[] { return [...items, item].slice(-limit) }
 
 function finish(state: StationState, event: StationEvent, commands: StationCommand[]): Reduction {
+  const recentDjLines = commands.reduce(
+    (lines, command) => command.type === "SPEAK" ? append(lines, command.text, 12) : lines,
+    state.recentDjLines
+  );
   return {
     state: {
       ...state,
-      recentEvents: [...state.recentEvents, event],
-      recentCommands: [...state.recentCommands, ...commands]
+      recentDjLines,
+      recentEvents: append(state.recentEvents, event, 500),
+      recentCommands: [...state.recentCommands, ...commands].slice(-500)
     },
     commands
   };
 }
 
-function resetContinuity(state: StationState): StationState {
-  return {
-    ...state,
-    continuity: { status: "none", bufferedMs: 0, audible: false }
-  };
-}
+function emptyNext(): StationState["nextTrack"] { return { status: "none", bufferedMs: 0, generatedMs: 0 } }
+function emptyTransition(): StationState["transition"] { return { status: "none", bufferedMs: 0, generatedMs: 0 } }
 
-function addContinuityLease(
-  continuity: StationState["continuity"],
-  lease: NonNullable<StationState["continuity"]["leases"]>[number]
-): StationState["continuity"] {
-  return {
-    ...continuity,
-    leases: continuity.leases?.includes(lease) ? continuity.leases : [...(continuity.leases ?? []), lease]
-  };
-}
-
-function withoutLease(
-  continuity: StationState["continuity"],
-  lease: NonNullable<StationState["continuity"]["leases"]>[number]
-): StationState["continuity"] {
-  return { ...continuity, leases: (continuity.leases ?? []).filter((candidate) => candidate !== lease) };
-}
-
-function releaseUserLease(state: StationState): Reduction {
-  const continuity = withoutLease(state.continuity, "user");
-  if ((continuity.leases?.length ?? 0) > 0 || continuity.audible || continuity.status === "committed") {
-    return { state: { ...state, continuity }, commands: [] };
-  }
-  return { state: resetContinuity(state), commands: [{ type: "RELEASE_CONTINUITY" }] };
-}
-
-function isNearOrInsideHorizon(state: StationState): boolean {
-  if (!state.playback.trackId) return false;
-  if (state.horizonFiredForTrackId === state.playback.trackId) return true;
-  if (state.nextTrack.status !== "none") return true;
-  return (state.playback.remainingMs ?? Number.POSITIVE_INFINITY) <= NEXT_TRACK_HORIZON_MS + NEXT_TRACK_REQUEST_GUARD_MS;
-}
-
-function bridgeCanHandoff(state: StationState, at: number): boolean {
-  if (state.continuity.status !== "committed" || !state.continuity.audible) return false;
-  if (state.nextTrack.status !== "ready" || !state.nextTrack.trackId) return false;
-  const startedAt = state.continuity.bridgeStartedAt ?? at;
-  const durationMs = state.continuity.bridgeDurationMs ?? 0;
-  return at - startedAt >= durationMs;
-}
-
-function handoffFromBridge(state: StationState): Reduction {
-  if (!state.nextTrack.trackId) return { state, commands: [] };
-  return {
-    state: { ...state, phase: "handoff" },
-    commands: [
-      {
-        type: "FADE",
-        from: "lyria",
-        to: "track",
-        trackId: state.nextTrack.trackId,
-        durationMs: NORMAL_CROSSFADE_MS
-      },
-      { type: "RELEASE_CONTINUITY", afterMs: NORMAL_CROSSFADE_MS + 100 }
-    ]
-  };
-}
-
-function commitBridge(state: StationState, at: number, durationMs: number): Reduction {
-  if (state.continuity.status === "committed") return { state, commands: [] };
-  let nextState: StationState = {
-    ...state,
-    phase: "lyria_bridge",
-    continuity: {
-      ...state.continuity,
-      status: "committed",
-      audible: true,
-      bridgeStartedAt: at,
-      bridgeDurationMs: durationMs
-    }
-  };
-  const commands: StationCommand[] = [
-    { type: "COMMIT_CONTINUITY" },
-    {
-      type: "FADE",
-      from: state.playback.trackId ? "track" : "silence",
-      to: "lyria",
-      durationMs: state.playback.trackId ? IMMEDIATE_CROSSFADE_MS : 500
-    }
-  ];
-  if (state.pendingBridgeSpeech) {
-    commands.push({ type: "SPEAK", ...state.pendingBridgeSpeech });
-    nextState = { ...nextState, pendingBridgeSpeech: undefined };
-  }
-  return { state: nextState, commands };
-}
-
-function playableTransitionFragment(state: StationState): boolean {
-  return Boolean(
-    state.transitionFragment?.trackId &&
-      state.transitionFragment.spec &&
-      state.transitionFragment.status === "ready"
-  );
-}
-
-function startTransitionFragment(state: StationState): Reduction {
-  const trackId = state.transitionFragment?.trackId;
+function handoff(state: StationState): Reduction {
+  const trackId = state.nextTrack.trackId;
   if (!trackId) return { state, commands: [] };
-  return {
-    state: { ...state, phase: "handoff", transitionFragmentDue: false },
-    commands: [
-      {
-        type: "PLAY_TRACK_FRAGMENT",
-        trackId,
-        fadeMs: NORMAL_CROSSFADE_MS,
-        fragmentMs: PROMOTED_FRAGMENT_MS
-      }
-    ]
-  };
-}
-
-function promotedBoundary(state: StationState, at: number): Reduction {
-  if (state.pendingUser?.resolution !== "promoted") return { state, commands: [] };
-  if (playableTransitionFragment(state)) return startTransitionFragment(state);
-  if (state.continuity.status !== "healthy") return { state, commands: [] };
-  const fragmentId = state.transitionFragment?.trackId;
-  const committed = commitBridge({ ...state, transitionFragment: undefined }, at, state.continuity.bridgeDurationMs ?? DEFAULT_BRIDGE_MS);
-  if (fragmentId) committed.commands.push({ type: "CANCEL_TRACK", trackId: fragmentId });
-  return committed;
-}
-
-function updateTrackState(track: NextTrackState, event: StationEvent): NextTrackState {
-  if (!("trackId" in event) || event.trackId !== track.trackId) return track;
-  switch (event.type) {
-    case "TRACK_GENERATION_STARTED":
-      return { ...track, status: "generating", spec: event.spec };
-    case "TRACK_FIRST_AUDIO":
-      return { ...track, status: "buffering", firstAudioMs: event.latencyMs };
-    case "TRACK_BUFFER_UPDATED":
-      return {
-        ...track,
-        bufferedMs: event.bufferedMs,
-        generatedMs: event.generatedMs,
-        generationRate: event.generationRate
-      };
-    case "TRACK_DURATION_RESOLVED":
-      return track.spec ? { ...track, spec: { ...track.spec, durationMs: event.durationMs } } : track;
-    case "TRACK_READY":
-      return { ...track, status: "ready" };
-    case "TRACK_GENERATION_FAILED":
-      return { ...track, status: "failed", error: event.error };
-    default:
-      return track;
+  const from = state.transition.status === "audible" ? "transition" : state.playback.trackId ? "track" : "silence";
+  const commands: StationCommand[] = [];
+  let nextState = state;
+  if (state.dj.pending) {
+    commands.push({ type: "SPEAK", speechId: state.dj.pending.speechId, text: state.dj.pending.text });
+    nextState = { ...state, dj: { ...state.dj, pending: undefined } };
   }
+  commands.push({ type: "FADE", from, to: "track", trackId, durationMs: NORMAL_CROSSFADE_MS });
+  if (state.transition.transitionId) commands.push({ type: "CANCEL_TRANSITION", transitionId: state.transition.transitionId, afterMs: NORMAL_CROSSFADE_MS + 100 });
+  return { state: { ...nextState, phase: "handoff" }, commands };
 }
 
-function resolveUserRequest(state: StationState, at: number): Reduction {
+function canHandoff(state: StationState): boolean {
+  return state.nextTrack.status === "ready" && Boolean(state.nextTrack.trackId) && !state.dj.speaking && !state.dj.pending &&
+    state.transition.status === "audible" && state.transition.minimumPlayed === true;
+}
+
+function resolveUser(state: StationState, at: number): Reduction {
   const pending = state.pendingUser;
-  if (!pending?.urgency || !pending.plan || pending.applied) return { state, commands: [] };
+  if (!pending || pending.applied || !pending.urgency || !pending.plan) return { state, commands: [] };
+  const { urgency, plan, requestId, revision, message } = pending;
+  if (revision !== state.intentRevision) return { state: { ...state, pendingUser: undefined }, commands: [] };
 
-  const { plan, urgency, requestId } = pending;
   if (urgency.timing === "conversation_only") {
-    const released = releaseUserLease({
-      ...state,
-      pendingUser: { ...pending, applied: true, resolution: "conversation" }
-    });
-    return released;
+    const commands: StationCommand[] = [{ type: "PLAN_DJ_LINE", revision, input: djInput(state, `dj-${requestId}`, "conversation", message) }];
+    return { state: { ...state, pendingUser: { ...pending, applied: true, resolution: "conversation" } }, commands };
   }
 
-  if (urgency.timing === "immediate" && urgency.interruptCurrentTrack) {
-    const spec = compileTrackSpec(`replacement-${requestId}`, plan.nextTrack, plan.destinationIntent);
-    let nextState: StationState = {
-      ...state,
-      intent: plan.destinationIntent,
-      phase: state.continuity.audible ? "lyria_bridge" : "generating_next",
-      nextTrack: { status: "planning", trackId: spec.id, spec, bufferedMs: 0, generatedMs: 0 },
-      transitionFragment: undefined,
-      transitionFragmentDue: false,
-      continuityPlanRequestId: undefined,
-      pendingUser: { ...pending, applied: true, resolution: "immediate" },
-      continuity: {
-        ...state.continuity,
-        target: plan.destinationIntent,
-        bridgeDurationMs: plan.transition.suggestedDurationMs
-      }
-    };
-    const commands: StationCommand[] = [];
-    if (state.nextTrack.trackId) commands.push({ type: "CANCEL_TRACK", trackId: state.nextTrack.trackId });
-    if (state.transitionFragment?.trackId && state.transitionFragment.trackId !== state.nextTrack.trackId) {
-      commands.push({ type: "CANCEL_TRACK", trackId: state.transitionFragment.trackId });
-    }
-    commands.push(
-      {
-        type: "STEER_CONTINUITY",
-        plan: {
-          sourceSummary: plan.transition.sourceSummary,
-          destinationSummary: plan.transition.destinationSummary,
-          durationMs: plan.transition.suggestedDurationMs,
-          keyframes: plan.transition.lyriaKeyframes
-        }
-      },
-      { type: "GENERATE_TRACK", spec }
-    );
-    if (plan.dj.speak && plan.dj.text) {
-      const speech = { speechId: `speech-${requestId}`, text: plan.dj.text };
-      if (state.continuity.audible || state.continuity.status === "committed") commands.push({ type: "SPEAK", ...speech });
-      else nextState = { ...nextState, pendingBridgeSpeech: speech };
-    }
-    if (nextState.continuity.status === "healthy") {
-      const committed = commitBridge(nextState, at, plan.transition.suggestedDurationMs);
-      nextState = committed.state;
-      commands.unshift(...committed.commands);
-    }
-    return { state: nextState, commands };
-  }
-
-  const promoted = urgency.timing === "next_track" && isNearOrInsideHorizon(state);
+  const nearHorizon = (state.playback.remainingMs ?? Infinity) <= NEXT_TRACK_HORIZON_MS + NEXT_TRACK_REQUEST_GUARD_MS || state.nextTrack.status !== "none";
+  const promoted = urgency.timing === "immediate" || (urgency.timing === "next_track" && nearHorizon);
   if (!promoted) {
-    const released = releaseUserLease({
-      ...state,
-      intent: plan.destinationIntent,
-      queuedDirective: plan.nextTrack,
-      pendingUser: { ...pending, applied: true, resolution: "deferred" }
-    });
-    return released;
-  }
-
-  const transitionFragment =
-    state.nextTrack.trackId && state.nextTrack.spec && state.nextTrack.status !== "failed"
-      ? state.nextTrack
-      : undefined;
-  const spec = compileTrackSpec(`requested-${requestId}`, plan.nextTrack, plan.destinationIntent);
-  let nextState: StationState = {
-    ...state,
-    phase: "generating_next",
-    intent: plan.destinationIntent,
-    nextTrack: { status: "planning", trackId: spec.id, spec, bufferedMs: 0, generatedMs: 0 },
-    transitionFragment,
-    transitionFragmentDue: false,
-    continuityPlanRequestId: undefined,
-    pendingUser: { ...pending, applied: true, resolution: "promoted" },
-    continuity: {
-      ...state.continuity,
-      target: plan.destinationIntent,
-      bridgeDurationMs: plan.transition.suggestedDurationMs
+    const commands: StationCommand[] = [];
+    if (state.transition.transitionId && state.transition.revision === revision) {
+      commands.push({ type: "CANCEL_TRANSITION", transitionId: state.transition.transitionId });
     }
-  };
-  const commands: StationCommand[] = [
-    {
-      type: "STEER_CONTINUITY",
-      plan: {
-        sourceSummary: plan.transition.sourceSummary,
-        destinationSummary: plan.transition.destinationSummary,
-        durationMs: plan.transition.suggestedDurationMs,
-        keyframes: plan.transition.lyriaKeyframes
-      }
-    },
-    { type: "GENERATE_TRACK", spec }
-  ];
-  if (plan.dj.speak && plan.dj.text) {
-    nextState = {
-      ...nextState,
-      pendingBridgeSpeech: { speechId: `speech-${requestId}`, text: plan.dj.text }
+    return {
+      state: {
+        ...state,
+        intent: plan.destinationIntent,
+        queuedDirective: plan.nextTrack,
+        transition: state.transition.revision === revision ? emptyTransition() : state.transition,
+        pendingUser: { ...pending, applied: true, resolution: "deferred" }
+      },
+      commands
     };
   }
-  return { state: nextState, commands };
+
+  const trackSpec = compileTrackSpec(`${requestId}-track`, revision, plan.nextTrack, plan.destinationIntent);
+  const commands: StationCommand[] = [];
+  let transitionState = state.transition;
+  if (state.nextTrack.trackId && state.nextTrack.trackId !== trackSpec.id) commands.push({ type: "CANCEL_TRACK", trackId: state.nextTrack.trackId });
+  if (state.transition.revision !== revision || state.transition.status === "failed" || state.transition.status === "none") {
+    const transition = compileTransitionSpec(`${requestId}-transition`, revision, state, urgency.immediateTransition, plan.destinationIntent, "immediate");
+    if (state.transition.transitionId && state.transition.transitionId !== transition.id) commands.push({ type: "CANCEL_TRANSITION", transitionId: state.transition.transitionId });
+    transitionState = { status: "generating", transitionId: transition.id, revision, spec: transition, bufferedMs: 0, generatedMs: 0 };
+    commands.push({ type: "GENERATE_TRANSITION", spec: transition });
+  }
+  commands.push({ type: "GENERATE_TRACK", spec: trackSpec });
+  commands.push({ type: "PLAN_DJ_LINE", revision, input: djInput({ ...state, intent: plan.destinationIntent }, `dj-${requestId}`, "user_change", message, plan.nextTrack) });
+  return {
+    state: {
+      ...state,
+      phase: "generating_next",
+      intent: plan.destinationIntent,
+      nextTrack: { status: "generating", trackId: trackSpec.id, revision, spec: trackSpec, bufferedMs: 0, generatedMs: 0 },
+      transition: transitionState,
+      pendingUser: { ...pending, applied: true, resolution: urgency.timing === "immediate" ? "immediate" : "next" }
+    },
+    commands
+  };
+}
+
+function beginTransitionFromUrgency(state: StationState, assessment: UrgencyAssessment): Reduction {
+  const pending = state.pendingUser;
+  if (!pending || assessment.timing !== "immediate" || !assessment.interruptCurrentTrack || !assessment.immediateTransition) return { state, commands: [] };
+  if (state.transition.revision === pending.revision && state.transition.status !== "none") return { state, commands: [] };
+  const provisionalIntent: MusicalIntent = {
+    ...state.intent,
+    description: assessment.immediateTransition.destinationSketch,
+    energy: assessment.immediateTransition.energyDirection === "up" ? Math.min(1, (state.intent.energy ?? 0.55) + 0.15) :
+      assessment.immediateTransition.energyDirection === "down" ? Math.max(0, (state.intent.energy ?? 0.55) - 0.15) : state.intent.energy
+  };
+  const spec = compileTransitionSpec(`${pending.requestId}-transition`, pending.revision, state, assessment.immediateTransition, provisionalIntent, "immediate");
+  const commands: StationCommand[] = [];
+  if (state.transition.transitionId) commands.push({ type: "CANCEL_TRANSITION", transitionId: state.transition.transitionId });
+  commands.push({ type: "GENERATE_TRANSITION", spec });
+  return {
+    state: { ...state, transition: { status: "generating", transitionId: spec.id, revision: spec.revision, spec, bufferedMs: 0, generatedMs: 0 } },
+    commands
+  };
+}
+
+function eventMatchesNext(state: StationState, trackId: string, revision: number): boolean {
+  return state.nextTrack.trackId === trackId && state.nextTrack.revision === revision;
+}
+function eventMatchesTransition(state: StationState, transitionId: string, revision: number): boolean {
+  return state.transition.transitionId === transitionId && state.transition.revision === revision;
 }
 
 export function reduce(state: StationState, event: StationEvent): Reduction {
-  let nextState = state;
+  let next = state;
   let commands: StationCommand[] = [];
 
   switch (event.type) {
     case "START_STATION": {
-      if (state.running) break;
-      const requestId = `initial-${event.sessionId}`;
-      nextState = {
-        ...state,
-        running: true,
-        phase: "generating_next",
-        error: undefined,
-        startup: { requestId, message: event.message, status: "planning" },
-        recentUserMessages: append(state.recentUserMessages, event.message, 20)
-      };
-      commands = [{ type: "PLAN_INITIAL_INTENT", input: { requestId, message: event.message } }];
+      const fresh = createInitialState();
+      next = { ...fresh, running: true, intentRevision: 1, startup: { requestId: event.sessionId, message: event.message, status: "planning" } };
+      commands = [{ type: "PLAN_INITIAL_INTENT", input: { requestId: event.sessionId, message: event.message } }];
       break;
     }
-
-    case "INITIAL_INTENT_RECEIVED": {
-      if (state.startup?.requestId !== event.requestId) break;
-      const intent = event.plan.intent;
-      const spec = compileTrackSpec(`opening-${event.requestId}`, directiveFromIntent(intent), intent);
-      const seed = snapshotFromIntent(intent);
-      nextState = {
-        ...state,
-        intent,
-        startup: { ...state.startup, status: "generating" },
-        nextTrack: { status: "planning", trackId: spec.id, spec, bufferedMs: 0, generatedMs: 0 },
-        continuity: addContinuityLease(
-          { status: "starting", bufferedMs: 0, audible: false, seed, target: intent },
-          "startup"
-        )
-      };
-      commands = [
-        { type: "PREWARM_CONTINUITY", seed },
-        { type: "GENERATE_TRACK", spec }
-      ];
-      break;
-    }
-
-    case "INITIAL_INTENT_FAILED":
-      if (state.startup?.requestId !== event.requestId) break;
-      nextState = { ...state, running: false, phase: "error", startup: undefined, error: event.error };
-      break;
-
     case "STOP_STATION":
-      nextState = {
-        ...createInitialState(),
-        recentEvents: state.recentEvents,
-        recentCommands: state.recentCommands,
-        intent: state.intent
-      };
+      next = createInitialState();
       commands = [{ type: "STOP_ALL" }];
       break;
-
-    case "USER_MESSAGE": {
-      const seed = snapshot(state);
-      const continuityBase =
-        state.continuity.status === "none" || state.continuity.status === "failed"
-          ? { status: "starting" as const, bufferedMs: 0, audible: false, seed }
-          : state.continuity;
-      nextState = {
+    case "INITIAL_INTENT_RECEIVED": {
+      if (state.startup?.requestId !== event.requestId) break;
+      const spec = compileTrackSpec(`${event.requestId}-opening`, state.intentRevision, event.plan.firstTrack, event.plan.intent);
+      next = {
         ...state,
-        continuity: addContinuityLease(continuityBase, "user"),
-        pendingUser: { requestId: event.requestId, message: event.message, applied: false },
-        recentUserMessages: append(state.recentUserMessages, event.message, 20)
+        phase: "generating_next",
+        intent: event.plan.intent,
+        startup: { ...state.startup, status: "generating" },
+        nextTrack: { status: "generating", trackId: spec.id, revision: spec.revision, spec, bufferedMs: 0, generatedMs: 0 }
       };
-      const fastInput = urgencyInput(state, event.requestId, event.message);
+      commands = [{ type: "GENERATE_TRACK", spec }];
+      break;
+    }
+    case "INITIAL_INTENT_FAILED":
+      if (state.startup?.requestId === event.requestId) next = { ...state, phase: "error", error: event.error };
+      break;
+    case "USER_MESSAGE": {
+      const revision = state.intentRevision + 1;
+      next = {
+        ...state,
+        intentRevision: revision,
+        pendingUser: { requestId: event.requestId, revision, message: event.message, applied: false },
+        recentUserMessages: append(state.recentUserMessages, event.message, 12)
+      };
       commands = [
-        { type: "PREWARM_CONTINUITY", seed },
-        { type: "ASSESS_USER_MESSAGE", input: fastInput },
+        { type: "ASSESS_USER_MESSAGE", input: urgencyInput(state, event.requestId, event.message) },
         { type: "PLAN_USER_INTENT", input: userIntentInput(state, event.requestId, event.message) }
       ];
       break;
     }
-
-    case "NEXT_TRACK_HORIZON": {
-      const seed = snapshot(state);
-      if (state.horizonFiredForTrackId === event.trackId) {
-        commands = [{ type: "PREWARM_CONTINUITY", seed }];
-        break;
-      }
-      const continuityBase =
-        state.continuity.status === "none" || state.continuity.status === "failed"
-          ? { status: "starting" as const, bufferedMs: 0, audible: false, seed }
-          : state.continuity;
-      nextState = {
-        ...state,
-        phase: "generating_next",
-        horizonFiredForTrackId: event.trackId,
-        continuity: addContinuityLease(continuityBase, "horizon")
-      };
-      commands = [{ type: "PREWARM_CONTINUITY", seed }];
-      if (state.nextTrack.status !== "none") break;
-      if (state.queuedDirective) {
-        const spec = compileTrackSpec(`next-${event.requestId}`, state.queuedDirective, state.intent);
-        nextState = {
-          ...nextState,
-          queuedDirective: undefined,
-          nextTrack: { status: "planning", trackId: spec.id, spec, bufferedMs: 0, generatedMs: 0 }
-        };
-        commands.push({ type: "GENERATE_TRACK", spec });
-      } else {
-        nextState = {
-          ...nextState,
-          continuityPlanRequestId: event.requestId,
-          nextTrack: { ...state.nextTrack, status: "planning" }
-        };
-        commands.push({ type: "PLAN_CONTINUITY", input: continuityInput(state, event.requestId) });
-      }
-      break;
-    }
-
     case "URGENCY_ASSESSMENT_RECEIVED": {
       if (state.pendingUser?.requestId !== event.requestId) break;
-      nextState = {
-        ...state,
-        pendingUser: { ...state.pendingUser, urgency: event.assessment },
-        continuityPlanRequestId:
-          event.assessment.timing === "immediate" && event.assessment.interruptCurrentTrack
-            ? undefined
-            : state.continuityPlanRequestId
-      };
-      if (
-        event.assessment.timing === "immediate" &&
-        event.assessment.interruptCurrentTrack &&
-        nextState.continuity.status === "healthy"
-      ) {
-        const committed = commitBridge(nextState, event.at, DEFAULT_BRIDGE_MS);
-        nextState = committed.state;
-        commands.push(...committed.commands);
-      }
-      const resolved = resolveUserRequest(nextState, event.at);
-      nextState = resolved.state;
+      next = { ...state, pendingUser: { ...state.pendingUser, urgency: event.assessment } };
+      const begun = beginTransitionFromUrgency(next, event.assessment);
+      next = begun.state;
+      commands.push(...begun.commands);
+      const resolved = resolveUser(next, event.at);
+      next = resolved.state;
       commands.push(...resolved.commands);
       break;
     }
-
-    case "URGENCY_ASSESSMENT_FAILED": {
-      if (state.pendingUser?.requestId !== event.requestId) break;
-      nextState = {
-        ...state,
-        pendingUser: {
-          ...state.pendingUser,
-          urgency: { timing: "future", interruptCurrentTrack: false, confidence: 0 }
-        },
-        error: event.error
-      };
-      const resolved = resolveUserRequest(nextState, event.at);
-      nextState = resolved.state;
-      commands = resolved.commands;
+    case "URGENCY_ASSESSMENT_FAILED":
+      if (state.pendingUser?.requestId === event.requestId) next = { ...state, pendingUser: undefined, error: event.error };
       break;
-    }
-
     case "USER_PLAN_RECEIVED": {
       if (state.pendingUser?.requestId !== event.requestId) break;
-      nextState = { ...state, pendingUser: { ...state.pendingUser, plan: event.plan } };
-      const resolved = resolveUserRequest(nextState, event.at);
-      nextState = resolved.state;
+      next = { ...state, pendingUser: { ...state.pendingUser, plan: event.plan } };
+      const resolved = resolveUser(next, event.at);
+      next = resolved.state;
       commands = resolved.commands;
       break;
     }
-
-    case "USER_PLAN_FAILED": {
-      if (state.pendingUser?.requestId !== event.requestId) break;
-      const fallbackSpec = compileTrackSpec(
-        `fallback-${event.requestId}`,
-        directiveFromIntent(state.intent),
-        state.intent
-      );
-      nextState = {
-        ...state,
-        error: event.error,
-        pendingUser: { ...state.pendingUser, applied: true, resolution: "deferred" }
-      };
-      if (state.continuity.audible || state.continuity.status === "committed") {
-        nextState = {
-          ...nextState,
-          nextTrack: { status: "planning", trackId: fallbackSpec.id, spec: fallbackSpec, bufferedMs: 0, generatedMs: 0 }
-        };
-        commands = [{ type: "GENERATE_TRACK", spec: fallbackSpec }];
+    case "USER_PLAN_FAILED":
+      if (state.pendingUser?.requestId === event.requestId) next = { ...state, pendingUser: undefined, error: event.error };
+      break;
+    case "NEXT_TRACK_HORIZON": {
+      if (event.trackId !== state.playback.trackId || state.horizonFiredForTrackId === event.trackId) break;
+      const requestId = event.requestId;
+      next = { ...state, horizonFiredForTrackId: event.trackId, phase: "generating_next" };
+      if (state.queuedDirective) {
+        const spec = compileTrackSpec(`${requestId}-queued`, state.intentRevision, state.queuedDirective, state.intent);
+        next = { ...next, queuedDirective: undefined, nextTrack: { status: "generating", trackId: spec.id, revision: spec.revision, spec, bufferedMs: 0, generatedMs: 0 } };
+        commands = [{ type: "GENERATE_TRACK", spec }];
       } else {
-        const released = releaseUserLease(nextState);
-        nextState = released.state;
-        commands = released.commands;
+        next = { ...next, continuityPlanRequestId: requestId, nextTrack: { status: "planning", revision: state.intentRevision, bufferedMs: 0, generatedMs: 0 } };
+        commands = [{ type: "PLAN_CONTINUITY", input: continuityInput(state, requestId) }];
       }
       break;
     }
-
     case "CONTINUITY_PLAN_RECEIVED": {
       if (state.continuityPlanRequestId !== event.requestId) break;
       const intent = event.plan.intentPatch ? { ...state.intent, ...event.plan.intentPatch } : state.intent;
-      const spec = compileTrackSpec(`next-${event.requestId}`, event.plan.nextTrack, intent);
-      nextState = {
-        ...state,
-        intent,
-        continuityPlanRequestId: undefined,
-        nextTrack: { status: "planning", trackId: spec.id, spec, bufferedMs: 0, generatedMs: 0 }
+      const spec = compileTrackSpec(`${event.requestId}-track`, state.intentRevision, event.plan.nextTrack, intent);
+      next = {
+        ...state, intent, continuityPlanRequestId: undefined,
+        nextTrack: { status: "generating", trackId: spec.id, revision: spec.revision, spec, bufferedMs: 0, generatedMs: 0 }
       };
-      commands = [{ type: "GENERATE_TRACK", spec }];
-      if (event.plan.dj?.speak && event.plan.dj.text) {
-        commands.push({ type: "SPEAK", speechId: `link-${event.requestId}`, text: event.plan.dj.text });
+      commands = [
+        { type: "GENERATE_TRACK", spec },
+        { type: "PLAN_DJ_LINE", revision: state.intentRevision, input: djInput({ ...state, intent }, `dj-${event.requestId}`, "track_change", undefined, event.plan.nextTrack) }
+      ];
+      break;
+    }
+    case "CONTINUITY_PLAN_FAILED":
+      if (state.continuityPlanRequestId === event.requestId) next = { ...state, phase: "error", error: event.error };
+      break;
+    case "DJ_LINE_RECEIVED": {
+      if (event.revision !== state.intentRevision || !event.plan.speak || !event.plan.text) break;
+      const pending = { speechId: event.requestId, text: event.plan.text, revision: event.revision };
+      next = { ...state, dj: { ...state.dj, pending } };
+      const noPendingTrackChange = state.nextTrack.status === "none" || (state.playback.remainingMs ?? Infinity) <= UNDERRUN_THREAT_MS;
+      if (state.transition.status === "audible" || (state.transition.status === "none" && noPendingTrackChange)) {
+        next = { ...next, dj: { ...next.dj, pending: undefined } };
+        commands = [{ type: "SPEAK", speechId: pending.speechId, text: pending.text }];
       }
       break;
     }
-
-    case "CONTINUITY_PLAN_FAILED": {
-      if (state.continuityPlanRequestId !== event.requestId) break;
-      const spec = compileTrackSpec(`fallback-${event.requestId}`, directiveFromIntent(state.intent), state.intent);
-      nextState = {
-        ...state,
-        error: event.error,
-        continuityPlanRequestId: undefined,
-        nextTrack: { status: "planning", trackId: spec.id, spec, bufferedMs: 0, generatedMs: 0 }
-      };
-      commands = [{ type: "GENERATE_TRACK", spec }];
+    case "DJ_LINE_FAILED":
       break;
-    }
-
     case "TRACK_GENERATION_STARTED":
+      if (eventMatchesNext(state, event.trackId, event.revision)) next = { ...state, nextTrack: { ...state.nextTrack, status: "generating", spec: event.spec } };
+      break;
     case "TRACK_FIRST_AUDIO":
+      if (eventMatchesNext(state, event.trackId, event.revision)) next = { ...state, nextTrack: { ...state.nextTrack, status: "buffering", firstAudioMs: event.latencyMs } };
+      break;
     case "TRACK_BUFFER_UPDATED":
-    case "TRACK_DURATION_RESOLVED": {
-      if (state.nextTrack.trackId === event.trackId) {
-        nextState = { ...state, nextTrack: updateTrackState(state.nextTrack, event) };
-      } else if (state.transitionFragment?.trackId === event.trackId) {
-        nextState = { ...state, transitionFragment: updateTrackState(state.transitionFragment, event) };
-      } else if (event.type === "TRACK_BUFFER_UPDATED" && state.playback.trackId === event.trackId) {
-        nextState = { ...state, playback: { ...state.playback, bufferedMs: event.bufferedMs } };
-      } else if (event.type === "TRACK_DURATION_RESOLVED" && state.playback.trackId === event.trackId) {
-        nextState = {
-          ...state,
-          playback: {
-            ...state.playback,
-            durationMs: event.durationMs,
-            remainingMs: Math.max(0, event.durationMs - state.playback.playheadMs)
-          }
-        };
-      }
+      if (eventMatchesNext(state, event.trackId, event.revision)) next = { ...state, nextTrack: { ...state.nextTrack, status: state.nextTrack.status === "ready" ? "ready" : "buffering", bufferedMs: event.bufferedMs, generatedMs: event.generatedMs, generationRate: event.generationRate } };
       break;
-    }
-
+    case "TRACK_DURATION_RESOLVED":
+      if (eventMatchesNext(state, event.trackId, event.revision) && state.nextTrack.spec) next = { ...state, nextTrack: { ...state.nextTrack, spec: { ...state.nextTrack.spec, durationMs: event.durationMs } } };
+      break;
     case "TRACK_READY": {
-      if (state.transitionFragment?.trackId === event.trackId) {
-        nextState = { ...state, transitionFragment: updateTrackState(state.transitionFragment, event) };
-        if ((state.playback.remainingMs ?? Number.POSITIVE_INFINITY) <= NORMAL_CROSSFADE_MS) {
-          const fragment = startTransitionFragment(nextState);
-          nextState = fragment.state;
-          commands = fragment.commands;
-        }
-        break;
-      }
-      if (state.nextTrack.trackId !== event.trackId) break;
-      nextState = { ...state, nextTrack: updateTrackState(state.nextTrack, event) };
-      if (!state.playback.trackId) {
-        if (state.continuity.status === "failed" || state.continuity.status === "none") {
-          commands = [{ type: "PLAY_TRACK", trackId: event.trackId, fadeMs: 250 }];
-          nextState = { ...nextState, phase: "handoff" };
-        } else if (bridgeCanHandoff(nextState, event.at)) {
-          const handoff = handoffFromBridge(nextState);
-          nextState = handoff.state;
-          commands = handoff.commands;
-        }
-      } else if (bridgeCanHandoff(nextState, event.at)) {
-        const handoff = handoffFromBridge(nextState);
-        nextState = handoff.state;
-        commands = handoff.commands;
-      } else if (state.pendingUser?.resolution === "immediate") {
-        // The replacement waits for the continuity stream even if track generation wins the race.
-      } else if (state.pendingUser?.resolution === "promoted") {
-        // The requested track waits for the natural boundary and the planned bridge.
-      } else if (state.continuity.status !== "none" && state.continuity.status !== "committed") {
-        commands = [{ type: "RELEASE_CONTINUITY" }];
-        nextState = resetContinuity(nextState);
+      if (!eventMatchesNext(state, event.trackId, event.revision)) break;
+      next = { ...state, nextTrack: { ...state.nextTrack, status: "ready" } };
+      if (!state.playback.trackId) commands = [{ type: "PLAY_TRACK", trackId: event.trackId, durationMs: 500 }];
+      else if (canHandoff(next)) {
+        const ready = handoff(next);
+        next = ready.state;
+        commands = ready.commands;
+      } else if (state.transition.status === "failed" && state.pendingUser?.resolution === "immediate") {
+        const ready = handoff(next);
+        next = ready.state;
+        commands = ready.commands;
+      } else if (state.transition.status === "none" && (state.playback.remainingMs ?? Infinity) <= NORMAL_CROSSFADE_MS + 1_000) {
+        const ready = handoff(next);
+        next = ready.state;
+        commands = ready.commands;
       }
       break;
     }
-
     case "TRACK_GENERATION_FAILED": {
-      if (state.transitionFragment?.trackId === event.trackId) {
-        nextState = { ...state, transitionFragment: undefined, error: event.error };
+      if (!eventMatchesNext(state, event.trackId, event.revision) || !state.nextTrack.spec) break;
+      const attempt = (state.nextTrack.repairAttempts ?? 0) + 1;
+      if (attempt > MAX_TRACK_REPAIR_ATTEMPTS) {
+        next = { ...state, nextTrack: { ...state.nextTrack, status: "failed", error: event.error }, error: event.error };
         break;
       }
-      if (state.nextTrack.trackId !== event.trackId) break;
-      nextState = { ...state, nextTrack: updateTrackState(state.nextTrack, event), error: event.error };
-      if (state.continuity.status === "healthy" && state.playback.trackId) {
-        const committed = commitBridge(nextState, event.at, 0);
-        nextState = committed.state;
-        commands = committed.commands;
-      }
+      next = { ...state, nextTrack: { ...state.nextTrack, status: "planning", repairAttempts: attempt, error: event.error } };
+      commands = [{ type: "REPAIR_TRACK_SPEC", failedTrackId: event.trackId, input: { requestId: `${event.trackId}-repair-${attempt}`, attempt, rejectedSpec: state.nextTrack.spec, providerError: event.error, currentIntent: state.intent } }];
       break;
     }
-
-    case "LYRIA_STARTED":
-      nextState = {
-        ...state,
-        continuity: { ...state.continuity, status: "buffering", streamId: event.streamId, seed: event.seed }
-      };
-      break;
-
-    case "LYRIA_BUFFER_UPDATED": {
-      if (state.continuity.streamId !== event.streamId) break;
-      nextState = { ...state, continuity: { ...state.continuity, bufferedMs: event.bufferedMs } };
-      if (bridgeCanHandoff(nextState, event.at)) {
-        const handoff = handoffFromBridge(nextState);
-        nextState = handoff.state;
-        commands = handoff.commands;
-      }
+    case "TRACK_REPAIR_RECEIVED": {
+      if (state.nextTrack.trackId !== event.failedTrackId || !state.nextTrack.spec) break;
+      const spec = compileTrackSpec(`${event.failedTrackId}-r${event.attempt}`, state.nextTrack.spec.revision, event.plan.track, state.intent);
+      next = { ...state, nextTrack: { status: "generating", trackId: spec.id, revision: spec.revision, spec, bufferedMs: 0, generatedMs: 0, repairAttempts: event.attempt } };
+      commands = [{ type: "GENERATE_TRACK", spec }];
       break;
     }
-
-    case "LYRIA_HEALTHY": {
-      if (state.continuity.streamId !== event.streamId) break;
-      nextState = { ...state, continuity: { ...state.continuity, status: "healthy" } };
-      if (state.startup && !state.playback.trackId) {
-        nextState = { ...nextState, startup: { ...state.startup, status: "bridging" } };
-        const committed = commitBridge(nextState, event.at, STARTUP_BRIDGE_MS);
-        nextState = committed.state;
-        commands = committed.commands;
-      } else if (state.pendingUser?.urgency?.timing === "immediate" && state.pendingUser.urgency.interruptCurrentTrack) {
-        const committed = commitBridge(nextState, event.at, state.continuity.bridgeDurationMs ?? DEFAULT_BRIDGE_MS);
-        nextState = committed.state;
-        commands = committed.commands;
-      } else if (state.transitionFragmentDue && state.pendingUser?.resolution === "promoted") {
-        const fragmentId = state.transitionFragment?.trackId;
-        const committed = commitBridge(
-          { ...nextState, transitionFragment: undefined, transitionFragmentDue: false },
-          event.at,
-          state.continuity.bridgeDurationMs ?? DEFAULT_BRIDGE_MS
-        );
-        nextState = committed.state;
-        commands = committed.commands;
-        if (fragmentId) commands.push({ type: "CANCEL_TRACK", trackId: fragmentId });
-      } else if (
-        state.pendingUser?.resolution === "promoted" &&
-        (state.playback.remainingMs ?? Number.POSITIVE_INFINITY) <= NORMAL_CROSSFADE_MS
-      ) {
-        const boundary = promotedBoundary(nextState, event.at);
-        nextState = boundary.state;
-        commands = boundary.commands;
+    case "TRACK_REPAIR_FAILED":
+      if (state.nextTrack.trackId === event.failedTrackId) next = { ...state, nextTrack: { ...state.nextTrack, status: "failed", error: event.error }, error: event.error };
+      break;
+    case "TRANSITION_GENERATION_STARTED":
+      if (eventMatchesTransition(state, event.transitionId, event.revision)) next = { ...state, transition: { ...state.transition, status: "generating", spec: event.spec } };
+      break;
+    case "TRANSITION_FIRST_AUDIO":
+      if (eventMatchesTransition(state, event.transitionId, event.revision)) next = { ...state, transition: { ...state.transition, status: "buffering", firstAudioMs: event.latencyMs } };
+      break;
+    case "TRANSITION_BUFFER_UPDATED":
+      if (eventMatchesTransition(state, event.transitionId, event.revision)) {
+        const status = state.transition.status === "audible" ? "audible" : state.transition.status === "ready" ? "ready" : "buffering";
+        next = { ...state, transition: { ...state.transition, status, bufferedMs: event.bufferedMs, generatedMs: event.generatedMs, generationRate: event.generationRate } };
       }
       break;
-    }
-
-    case "LYRIA_FAILED":
-      nextState = {
-        ...state,
-        continuity: { ...state.continuity, status: "failed", audible: false, error: event.error },
-        error: event.error
-      };
-      if (!state.playback.trackId && state.nextTrack.status === "ready" && state.nextTrack.trackId) {
-        commands = [{ type: "PLAY_TRACK", trackId: state.nextTrack.trackId, fadeMs: 250 }];
-        nextState = { ...nextState, phase: "handoff" };
+    case "TRANSITION_READY":
+      if (eventMatchesTransition(state, event.transitionId, event.revision)) {
+        next = { ...state, transition: { ...state.transition, status: "ready" } };
+        if (state.pendingUser?.revision === event.revision && ["immediate", "next"].includes(state.pendingUser.resolution ?? "")) {
+          commands = [{ type: "PLAY_TRANSITION", transitionId: event.transitionId, durationMs: IMMEDIATE_CROSSFADE_MS, minimumPlayMs: TRANSITION_MINIMUM_PLAY_MS }];
+        } else if ((state.playback.remainingMs ?? Infinity) <= UNDERRUN_THREAT_MS) {
+          commands = [{ type: "PLAY_TRANSITION", transitionId: event.transitionId, durationMs: NORMAL_CROSSFADE_MS, minimumPlayMs: TRANSITION_MINIMUM_PLAY_MS }];
+        }
       }
       break;
-
+    case "TRANSITION_GENERATION_FAILED":
+      if (eventMatchesTransition(state, event.transitionId, event.revision)) next = { ...state, transition: { ...state.transition, status: "failed", error: event.error }, error: event.error };
+      break;
+    case "TRANSITION_STARTED":
+      if (eventMatchesTransition(state, event.transitionId, event.revision)) {
+        next = { ...state, phase: "transition", transition: { ...state.transition, status: "audible", startedAt: event.at, minimumPlayed: false } };
+        if (state.dj.pending?.revision === event.revision) {
+          commands = [{ type: "SPEAK", speechId: state.dj.pending.speechId, text: state.dj.pending.text }];
+          next = { ...next, dj: { ...state.dj, pending: undefined } };
+        }
+      }
+      break;
+    case "TRANSITION_MINIMUM_PLAYED":
+      if (eventMatchesTransition(state, event.transitionId, event.revision)) {
+        next = { ...state, transition: { ...state.transition, minimumPlayed: true } };
+        if (canHandoff(next)) {
+          const ready = handoff(next);
+          next = ready.state;
+          commands = ready.commands;
+        }
+      }
+      break;
+    case "TRANSITION_ENDED":
+      if (eventMatchesTransition(state, event.transitionId, event.revision)) {
+        if (state.nextTrack.status === "ready") {
+          const ready = handoff({ ...state, transition: { ...state.transition, minimumPlayed: true } });
+          next = ready.state;
+          commands = ready.commands;
+        } else next = { ...state, phase: "error", error: "The transition ended before replacement music was ready." };
+      }
+      break;
     case "TTS_STARTED":
-      nextState = { ...state, dj: { speaking: true } };
+      next = { ...state, dj: { ...state.dj, speaking: true } };
       break;
-
-    case "TTS_FINISHED":
-      nextState = { ...state, dj: { speaking: false } };
+    case "TTS_FINISHED": {
+      next = { ...state, dj: { ...state.dj, speaking: false }, recentDjLines: state.dj.speaking ? state.recentDjLines : state.recentDjLines };
+      if (canHandoff(next)) {
+        const ready = handoff(next);
+        next = ready.state;
+        commands = ready.commands;
+      }
       break;
-
+    }
     case "TRACK_STARTED": {
-      const previousSummary = state.playback.styleSummary;
-      const previousTrackId = state.playback.trackId;
-      nextState = {
-        ...state,
+      if (state.nextTrack.trackId !== event.trackId) break;
+      if (state.playback.trackId && state.playback.title) {
+        next = { ...state, recentTracks: append(state.recentTracks, { trackId: state.playback.trackId, title: state.playback.title, description: state.playback.styleSummary ?? "", bpm: state.playback.bpm, key: state.playback.key, energy: state.playback.energy }, 12) };
+      }
+      next = {
+        ...next,
         phase: "playing",
         playback: {
-          trackId: event.trackId,
-          title: event.spec.title,
-          playheadMs: 0,
-          durationMs: event.spec.durationMs,
-          remainingMs: event.spec.durationMs,
-          bpm: event.spec.bpm,
-          key: event.spec.key,
-          styleSummary: event.spec.description,
-          energy: event.spec.energy,
-          bufferedMs: state.nextTrack.bufferedMs
+          trackId: event.trackId, title: event.spec.title, playheadMs: 0, durationMs: event.spec.durationMs, remainingMs: event.spec.durationMs,
+          bpm: event.spec.bpm, key: event.spec.key, styleSummary: event.spec.description, energy: event.spec.energy, bufferedMs: state.nextTrack.bufferedMs
         },
-        nextTrack: { status: "none", bufferedMs: 0, generatedMs: 0 },
-        transitionFragment: undefined,
-        transitionFragmentDue: false,
-        continuity: { status: "none", bufferedMs: 0, audible: false },
-        startup: undefined,
-        pendingUser: undefined,
-        pendingBridgeSpeech: undefined,
+        nextTrack: emptyNext(),
+        transition: emptyTransition(),
         horizonFiredForTrackId: null,
-        continuityPlanRequestId: undefined,
-        recentTrackSummaries: previousSummary
-          ? append(state.recentTrackSummaries, previousSummary, 20)
-          : state.recentTrackSummaries
+        startup: undefined,
+        pendingUser: state.pendingUser?.applied ? undefined : state.pendingUser,
+        error: undefined
       };
-      if (previousTrackId && previousTrackId !== event.trackId) {
-        commands = [{ type: "CANCEL_TRACK", trackId: previousTrackId, afterMs: NORMAL_CROSSFADE_MS + 100 }];
-      }
       break;
     }
-
-    case "TRACK_FRAGMENT_STARTED": {
-      if (state.transitionFragment?.trackId !== event.trackId || !state.transitionFragment.spec) break;
-      const spec = state.transitionFragment.spec;
-      const previousTrackId = state.playback.trackId;
-      nextState = {
-        ...state,
-        phase: "handoff",
-        transitionFragmentDue: false,
-        playback: {
-          trackId: event.trackId,
-          title: spec.title,
-          playheadMs: 0,
-          durationMs: event.fragmentMs,
-          remainingMs: event.fragmentMs,
-          bpm: spec.bpm,
-          key: spec.key,
-          styleSummary: spec.description,
-          energy: spec.energy,
-          bufferedMs: state.transitionFragment.bufferedMs
-        },
-        horizonFiredForTrackId: event.trackId
-      };
-      if (previousTrackId && previousTrackId !== event.trackId) {
-        commands = [{ type: "CANCEL_TRACK", trackId: previousTrackId, afterMs: NORMAL_CROSSFADE_MS + 100 }];
-      }
-      break;
-    }
-
-    case "TRACK_FRAGMENT_ENDED": {
-      if (state.transitionFragment?.trackId !== event.trackId) break;
-      if (state.continuity.status === "healthy") {
-        const committed = commitBridge(
-          { ...state, transitionFragment: undefined, transitionFragmentDue: false },
-          event.at,
-          state.continuity.bridgeDurationMs ?? DEFAULT_BRIDGE_MS
-        );
-        nextState = committed.state;
-        commands = [...committed.commands, { type: "CANCEL_TRACK", trackId: event.trackId }];
-      } else {
-        nextState = { ...state, transitionFragmentDue: true };
-      }
-      break;
-    }
-
     case "TRACK_PROGRESS": {
-      if (state.playback.trackId !== event.trackId) break;
-      nextState = {
-        ...state,
-        playback: {
-          ...state.playback,
-          playheadMs: event.playheadMs,
-          remainingMs: event.remainingMs,
-          bufferedMs: event.bufferedMs
-        }
-      };
-      if (state.pendingUser?.resolution === "promoted" && event.remainingMs <= NORMAL_CROSSFADE_MS) {
-        const boundary = promotedBoundary(nextState, event.at);
-        nextState = boundary.state;
-        commands = boundary.commands;
-      } else if (state.phase !== "handoff" && state.nextTrack.status === "ready" && event.remainingMs <= NORMAL_CROSSFADE_MS) {
-        nextState = { ...nextState, phase: "handoff" };
-        commands = [
-          {
-            type: "FADE",
-            from: "track",
-            to: "track",
-            trackId: state.nextTrack.trackId,
-            durationMs: NORMAL_CROSSFADE_MS
-          }
-        ];
-      } else if (
-        state.nextTrack.status !== "ready" &&
-        event.remainingMs <= UNDERRUN_THREAT_MS &&
-        state.continuity.status === "healthy"
-      ) {
-        const committed = commitBridge(nextState, event.at, state.continuity.bridgeDurationMs ?? 0);
-        nextState = committed.state;
-        commands = committed.commands;
+      if (event.trackId !== state.playback.trackId) break;
+      next = { ...state, playback: { ...state.playback, playheadMs: event.playheadMs, remainingMs: event.remainingMs, bufferedMs: event.bufferedMs } };
+      if (state.nextTrack.status === "ready" && state.transition.status === "none" && event.remainingMs <= NORMAL_CROSSFADE_MS + 1_000) {
+        const ready = handoff(next);
+        next = ready.state;
+        commands = ready.commands;
+      } else if (["planning", "generating", "buffering"].includes(state.nextTrack.status) && event.remainingMs <= UNDERRUN_THREAT_MS && state.transition.status === "none") {
+        const destination = state.nextTrack.spec ? {
+          ...state.intent,
+          description: state.nextTrack.spec.description,
+          styles: state.nextTrack.spec.styles,
+          mood: state.nextTrack.spec.mood,
+          energy: state.nextTrack.spec.energy,
+          bpmRange: [state.nextTrack.spec.bpm, state.nextTrack.spec.bpm] as [number, number]
+        } : state.intent;
+        const revision = state.nextTrack.revision ?? state.intentRevision;
+        const spec = compileTransitionSpec(`underrun-${event.trackId}-${revision}`, revision, state, undefined, destination, "underrun");
+        next = { ...next, transition: { status: "generating", transitionId: spec.id, revision, spec, bufferedMs: 0, generatedMs: 0 } };
+        commands = [{ type: "GENERATE_TRANSITION", spec }];
+      } else if (state.transition.status === "ready" && event.remainingMs <= UNDERRUN_THREAT_MS && state.transition.transitionId) {
+        commands = [{ type: "PLAY_TRANSITION", transitionId: state.transition.transitionId, durationMs: NORMAL_CROSSFADE_MS, minimumPlayMs: TRANSITION_MINIMUM_PLAY_MS }];
       }
       break;
     }
-
     case "TRACK_ENDED":
-      if (state.playback.trackId !== event.trackId) break;
-      if (state.pendingUser?.resolution === "promoted") {
-        const boundary = promotedBoundary(state, event.at);
-        nextState = boundary.state;
-        commands = boundary.commands;
-      } else if (state.nextTrack.status === "ready" && state.nextTrack.trackId) {
-        nextState = { ...state, phase: "handoff" };
-        commands = [{ type: "FADE", from: "track", to: "track", trackId: state.nextTrack.trackId, durationMs: 300 }];
-      } else if (state.continuity.status === "healthy") {
-        const committed = commitBridge(state, event.at, state.continuity.bridgeDurationMs ?? 0);
-        nextState = committed.state;
-        commands = committed.commands;
-      } else if (state.continuity.status !== "committed") {
-        nextState = { ...state, phase: "error", error: "No playable source remained at track end." };
-      }
+      if (event.trackId !== state.playback.trackId) break;
+      if (state.transition.status === "ready" && state.transition.transitionId) commands = [{ type: "PLAY_TRANSITION", transitionId: state.transition.transitionId, durationMs: 250, minimumPlayMs: TRANSITION_MINIMUM_PLAY_MS }];
+      else if (state.nextTrack.status === "ready" && state.nextTrack.trackId) commands = [{ type: "PLAY_TRACK", trackId: state.nextTrack.trackId, durationMs: 250 }];
+      else next = { ...state, phase: "error", error: "Playback ended before another playable stream was ready." };
       break;
   }
 
-  return finish(nextState, event, commands);
+  return finish(next, event, commands);
 }

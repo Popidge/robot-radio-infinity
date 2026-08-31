@@ -1,0 +1,6 @@
+{
+  "name": "Robot Radio Infinity",
+  "description": "An infinitely generated AI radio station that follows the listener without breaking the flow.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

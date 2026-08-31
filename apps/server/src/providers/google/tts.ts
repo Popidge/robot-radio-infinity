@@ -42,6 +42,10 @@ export class GoogleTTSProvider implements TTSProvider {
     };
   }
 
+  async cancel(_id: string): Promise<void> {
+    // The inactive Google adapter returns finite requests and has no cancellation handle.
+  }
+
   private request(text: string): GenerateContentParameters {
     return {
       model: this.model,
