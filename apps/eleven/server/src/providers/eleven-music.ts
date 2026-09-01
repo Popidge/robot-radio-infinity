@@ -81,6 +81,7 @@ function trackPlan(spec: TrackSpec): { chunks: CompositionChunk[] } {
         `original concept titled "${spec.title}"`,
         spec.description,
         section.description,
+        ...(spec.editorialNotes ?? []),
         ...vocalStyles(spec),
         "original composition",
         "coherent arrangement",

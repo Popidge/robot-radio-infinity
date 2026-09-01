@@ -8,8 +8,7 @@ export const musicalIntentSchema = z.object({
   bpmRange: z.tuple([z.number().positive(), z.number().positive()]).optional(),
   keyPreference: z.string().max(60).optional(),
   vocals: z.string().max(500).optional(),
-  language: z.string().max(60).optional(),
-  djTalkativeness: z.number().min(0).max(1).optional()
+  language: z.string().max(60).optional()
 });
 
 export const musicalSnapshotSchema = z.object({
@@ -32,7 +31,8 @@ export const trackDirectiveSchema = z.object({
   vocals: z.string().max(500).optional(),
   language: z.string().max(60).optional(),
   durationMs: z.number().int().positive().optional(),
-  sections: z.array(trackSectionSchema).min(1).max(12).optional()
+  sections: z.array(trackSectionSchema).min(1).max(12).optional(),
+  editorialNotes: z.array(z.string().min(1).max(300)).max(8).optional()
 });
 
 export const trackSpecSchema = trackDirectiveSchema.extend({
@@ -56,37 +56,66 @@ export const urgencyAssessmentSchema = z.object({
   timing: z.enum(["conversation_only", "future", "next_track", "immediate"]), interruptCurrentTrack: z.boolean(),
   confidence: z.number().min(0).max(1), immediateTransition: transitionSketchSchema.optional()
 });
-export const userIntentPlanSchema = z.object({ destinationIntent: musicalIntentSchema, nextTrack: trackDirectiveSchema });
-export const initialIntentInputSchema = z.object({ requestId: z.string(), message: z.string().min(1).max(600) });
-export const initialIntentPlanSchema = z.object({ intent: musicalIntentSchema, firstTrack: trackDirectiveSchema });
-
 export const recentTrackSchema = z.object({
   trackId: z.string(), title: z.string().min(1), description: z.string().min(1), bpm: z.number().positive().optional(),
   key: z.string().optional(), energy: z.number().min(0).max(1).optional()
 });
-export const continuityPlanSchema = z.object({
-  intentPatch: musicalIntentSchema.partial().optional(), nextTrack: trackDirectiveSchema,
-  transition: z.object({ type: z.enum(["simple_fade", "dj_link"]) })
+export const onAirCuePurposeSchema = z.enum(["opening", "listener_acknowledgement", "back_announce", "tease", "mid_track_observation"]);
+export const showStateSchema = z.object({
+  presenter: z.object({
+    name: z.string().min(1).max(80),
+    identity: z.string().min(1).max(500),
+    voiceRules: z.array(z.string().min(1).max(300)).min(1).max(8)
+  }),
+  listener: z.object({
+    preferences: z.array(z.string().min(1).max(200)).max(8),
+    dislikes: z.array(z.string().min(1).max(200)).max(8),
+    callbacks: z.array(z.string().min(1).max(240)).max(6),
+    notablePhrases: z.array(z.string().min(1).max(200)).max(6)
+  }),
+  musicalThesis: z.object({
+    current: z.string().min(1).max(500),
+    intendedTrajectory: z.array(z.string().min(1).max(240)).max(6)
+  }),
+  recentProductionFingerprints: z.array(z.string().min(1).max(300)).max(8),
+  speechCadence: z.object({
+    lastCueAt: z.number().nullable(),
+    lastCuePurpose: onAirCuePurposeSchema.optional(),
+    cooldownMs: z.number().int().min(10_000).max(180_000),
+    sessionTalkativeness: z.number().min(0).max(1),
+    cuesSpoken: z.number().int().nonnegative()
+  })
 });
+export const showMemoryUpdatesSchema = z.object({
+  listener: z.object({
+    preferences: z.array(z.string().min(1).max(200)).max(4).optional(),
+    dislikes: z.array(z.string().min(1).max(200)).max(4).optional(),
+    callbacks: z.array(z.string().min(1).max(240)).max(3).optional(),
+    notablePhrases: z.array(z.string().min(1).max(200)).max(3).optional()
+  }).optional(),
+  musicalThesis: z.string().min(1).max(500).optional(),
+  intendedTrajectory: z.array(z.string().min(1).max(240)).max(6).optional(),
+  productionFingerprint: z.string().min(1).max(300).optional(),
+  sessionTalkativeness: z.number().min(0).max(1).optional()
+});
+export const producerPlanSchema = z.object({
+  musicalDirection: z.object({ intent: musicalIntentSchema, nextTrack: trackDirectiveSchema.omit({ editorialNotes: true }) }),
+  onAirCue: z.object({ text: z.string().min(1).max(400), purpose: onAirCuePurposeSchema }).optional(),
+  memoryUpdates: showMemoryUpdatesSchema,
+  editorialNotes: z.array(z.string().min(1).max(300)).max(8),
+  suggestedTiming: z.enum(["opening", "conversation_only", "future", "next_track", "immediate", "continuity"])
+});
+export const initialIntentInputSchema = z.object({ requestId: z.string(), message: z.string().min(1).max(600), showState: showStateSchema });
 export const urgencyInputSchema = z.object({
   requestId: z.string(), message: z.string(), currentIntent: musicalIntentSchema, currentTrack: musicalSnapshotSchema.nullable()
 });
 export const userIntentInputSchema = urgencyInputSchema.extend({
-  remainingMs: z.number().nullable(), recentTracks: z.array(recentTrackSchema).max(8),
-  recentUserMessages: z.array(z.string()).max(8), recentDjLines: z.array(z.string()).max(8)
+  remainingMs: z.number().nullable(), showState: showStateSchema
 });
 export const continuityInputSchema = z.object({
   requestId: z.string(), currentIntent: musicalIntentSchema, currentTrack: musicalSnapshotSchema.nullable(),
-  recentTracks: z.array(recentTrackSchema).max(8), recentUserMessages: z.array(z.string()).max(8), recentDjLines: z.array(z.string()).max(8)
+  showState: showStateSchema
 });
-
-export const djLineInputSchema = z.object({
-  requestId: z.string(), userMessage: z.string().max(600).optional(),
-  reason: z.enum(["startup", "user_change", "track_change", "conversation"]), currentIntent: musicalIntentSchema,
-  currentTrack: musicalSnapshotSchema.nullable(), nextTrack: trackDirectiveSchema.optional(), recentTracks: z.array(recentTrackSchema).max(8),
-  recentUserMessages: z.array(z.string()).max(8), recentDjLines: z.array(z.string()).max(8)
-});
-export const djLinePlanSchema = z.object({ speak: z.boolean(), text: z.string().min(1).max(400).optional() });
 export const trackRepairInputSchema = z.object({
   requestId: z.string(), attempt: z.number().int().min(1).max(3), rejectedSpec: trackSpecSchema,
   providerError: z.string().min(1).max(4_000), currentIntent: musicalIntentSchema

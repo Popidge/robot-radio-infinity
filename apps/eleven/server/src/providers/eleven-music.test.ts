@@ -34,6 +34,7 @@ const instrumentalTrack: TrackSpec = {
   key: "D minor",
   vocals: "Instrumental, with no vocals",
   durationMs: 30_000,
+  editorialNotes: ["Keep the kick soft and the hook instantly legible", "Leave negative space around the electric piano"],
   sections: [
     {
       name: "Clear Boot",
@@ -80,6 +81,8 @@ describe("Eleven Music composition plans", () => {
     expect(intro.text).not.toContain(instrumentalTrack.description);
     expect(intro.positive_styles).toContain(instrumentalTrack.description);
     expect(intro.positive_styles).toContain(instrumentalTrack.sections![0]!.description);
+    expect(intro.positive_styles).toContain(instrumentalTrack.editorialNotes![0]);
+    expect(development.positive_styles).toContain(instrumentalTrack.editorialNotes![1]);
     expect(intro.positive_styles).toContain('original concept titled "Soft Compile"');
     expect(intro.negative_styles).not.toContain("copyrighted melody");
   });

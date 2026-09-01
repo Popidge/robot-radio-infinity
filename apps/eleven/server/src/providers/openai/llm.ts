@@ -1,27 +1,21 @@
 import { z } from "zod";
 import {
-  continuityPlanSchema,
-  djLinePlanSchema,
-  initialIntentPlanSchema,
+  producerPlanSchema,
   trackRepairPlanSchema,
   urgencyAssessmentSchema,
-  userIntentPlanSchema,
   type ContinuityInput,
-  type ContinuityPlan,
-  type DJLineInput,
-  type DJLinePlan,
   type InitialIntentInput,
-  type InitialIntentPlan,
   type LLMProvider,
+  type ProducerPlan,
   type TrackRepairInput,
   type TrackRepairPlan,
   type UrgencyAssessment,
   type UrgencyInput,
-  type UserIntentInput,
-  type UserIntentPlan
+  type UserIntentInput
 } from "@robot-radio/eleven-shared";
 
 const MUSIC_POLICY = `Translate references to existing artists, bands, recordings, characters, or songs into precise generic musical attributes. Never copy a protected title, lyric, melody, or artist name into a music direction. Preserve the listener's actual musical meaning: era, vocal technique, instrumentation, harmony, rhythm, energy, production, theatricality, and structure. Invent original track titles and original lyrics.`;
+const PRODUCER_POLICY = `Act as both producer and presenter. The supplied ShowState is bounded programme memory: respect its stable presenter identity and voice rules, use listener memory selectively, develop the musical thesis and trajectory, and avoid recent production fingerprints. Return editorial choices, not playback commands. suggestedTiming is advisory context only; deterministic code makes every timing decision. onAirCue is optional and must have one explicit editorial purpose. Silence is preferable to generic chatter. If you write a cue, make it natural speech of at most two short sentences and never mention software, models, prompts, APIs, generation, or orchestration. editorialNotes must be concrete instructions that help Eleven Music produce the intended composition.`;
 
 interface ResponsesPayload {
   output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
@@ -121,12 +115,12 @@ export class OpenAILLMProvider implements LLMProvider {
     return options.schema.parse(omitNullProperties(JSON.parse(responseText(payload))));
   }
 
-  planInitialIntent(input: InitialIntentInput): Promise<InitialIntentPlan> {
+  planInitialIntent(input: InitialIntentInput): Promise<ProducerPlan> {
     return this.structured({
-      name: "initial_station_plan",
-      schema: initialIntentPlanSchema,
+      name: "opening_producer_plan",
+      schema: producerPlanSchema,
       effort: "low",
-      system: `You are the musical director of an AI radio station. Turn the listener's opening vibe into a durable MusicalIntent and a concrete original first track. All energy and djTalkativeness values are decimal numbers from 0 to 1, never percentages. ${MUSIC_POLICY} Set a useful 180000 ms duration and provide 3-7 composition sections whose durations approximately cover the track. Make the intro legible quickly and the outro transition-friendly.`,
+      system: `${PRODUCER_POLICY} Turn the opening request into a durable MusicalIntent and one concrete original first track. Energy values are decimals from 0 to 1. ${MUSIC_POLICY} Set a useful 180000 ms duration and provide 3-7 composition sections whose durations approximately cover the track. Make the intro legible quickly and the outro transition-friendly. Use suggestedTiming opening. An optional cue must use purpose opening. Capture only durable listener details in memoryUpdates and provide a concise production fingerprint.`,
       input
     });
   }
@@ -142,33 +136,22 @@ export class OpenAILLMProvider implements LLMProvider {
     });
   }
 
-  planUserIntent(input: UserIntentInput): Promise<UserIntentPlan> {
+  planUserIntent(input: UserIntentInput): Promise<ProducerPlan> {
     return this.structured({
-      name: "listener_music_plan",
-      schema: userIntentPlanSchema,
+      name: "listener_producer_plan",
+      schema: producerPlanSchema,
       effort: "low",
-      system: `You are the station's musical director. Independently interpret the listener message into the next durable musical intent and one complete original next track. All energy and djTalkativeness values are decimal numbers from 0 to 1, never percentages. Do not decide timing and do not write DJ dialogue; separate code handles both. ${MUSIC_POLICY} Preserve unchanged preferences unless the listener overrides them. Set a useful 180000 ms track duration. Give the track a memorable original title and a 3-8 section composition plan. Sections must create a coherent intro, development, and clean transition-friendly outro. Do not put a named artist or protected work in any returned field.`,
+      system: `${PRODUCER_POLICY} Interpret the listener turn into the next durable musical direction and one complete original next track. Energy and sessionTalkativeness values are decimals from 0 to 1. ${MUSIC_POLICY} Preserve established preferences unless explicitly overridden; record new preferences, dislikes, useful callbacks, and notable listener phrasing in memoryUpdates. For conversation that requests no musical change, keep the current direction and use suggestedTiming conversation_only. Otherwise suggest future, next_track, or immediate without assuming it will be followed. Set a useful 180000 ms duration and provide a coherent 3-8 section composition plan. Acknowledgement cues use purpose listener_acknowledgement; other purposes must match their actual editorial job.`,
       input
     });
   }
 
-  planContinuity(input: ContinuityInput): Promise<ContinuityPlan> {
+  planContinuity(input: ContinuityInput): Promise<ProducerPlan> {
     return this.structured({
-      name: "station_continuity_plan",
-      schema: continuityPlanSchema,
+      name: "horizon_producer_plan",
+      schema: producerPlanSchema,
       effort: "low",
-      system: `Choose the next original track strictly inside the current MusicalIntent. The horizon means "more of this current vibe," not permission to alter the station's persistent intent. Omit intentPatch. Vary composition, instrumentation, hooks, and arrangement enough to avoid repetition while preserving the requested styles, mood, energy range, tempo range, vocals, and language. Use recent history to avoid repeating titles or musical ideas. ${MUSIC_POLICY} Set a 180000 ms duration and a coherent 3-8 section structure with a clean intro and outro. Choose dj_link sparingly; simple_fade is normal.`,
-      input
-    });
-  }
-
-  planDjLine(input: DJLineInput): Promise<DJLinePlan> {
-    return this.structured({
-      name: "radio_dj_line",
-      schema: djLinePlanSchema,
-      fast: true,
-      effort: "none",
-      system: `You are Robot Radio Infinity's warm, curious, slightly odd late-night AI DJ. Decide whether one brief spoken link genuinely improves the moment. Use the rolling history so you remember listener language and track titles, avoid repeating yourself, and sound like the same host. Speak at most two short sentences. Acknowledge requests naturally, but do not narrate software, models, prompts, APIs, or orchestration. Never claim a track already played if it did not. If silence is better, return speak false.`,
+      system: `${PRODUCER_POLICY} Choose the next original track strictly inside the current MusicalIntent and musical thesis. The horizon means a purposeful next chapter, not permission to rewrite the listener's durable intent. Vary instrumentation, rhythm, hook shape, structure, and production against recentProductionFingerprints. ${MUSIC_POLICY} Set a 180000 ms duration and a coherent 3-8 section structure with a clean intro and outro. Use suggestedTiming continuity. Usually omit onAirCue. When speech genuinely improves the handoff, use back_announce or tease; use mid_track_observation only for a rare, specific insight worth interrupting the music for.`,
       input
     });
   }

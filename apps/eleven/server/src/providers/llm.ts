@@ -1,18 +1,14 @@
 import type {
   ContinuityInput,
-  ContinuityPlan,
-  DJLineInput,
-  DJLinePlan,
   InitialIntentInput,
-  InitialIntentPlan,
   LLMProvider,
+  ProducerPlan,
   TrackRepairInput,
   TrackRepairPlan,
   TrackDirective,
   UrgencyAssessment,
   UrgencyInput,
-  UserIntentInput,
-  UserIntentPlan
+  UserIntentInput
 } from "@robot-radio/eleven-shared";
 
 function delay(ms: number): Promise<void> {
@@ -54,23 +50,35 @@ function directiveFromMessage(message: string): TrackDirective {
   };
 }
 
+function fingerprint(directive: TrackDirective): string {
+  return `${directive.title}: ${(directive.styles ?? []).join(", ")}; ${(directive.mood ?? []).join(", ")}; ${directive.bpm ?? "flexible"} BPM; ${directive.description}`.slice(0, 300);
+}
+
 export class MockLLMProvider implements LLMProvider {
-  async planInitialIntent(input: InitialIntentInput): Promise<InitialIntentPlan> {
+  async planInitialIntent(input: InitialIntentInput): Promise<ProducerPlan> {
     await delay(Number(process.env.MOCK_URGENCY_LATENCY_MS ?? 180));
     const directive = directiveFromMessage(input.message);
+    const intent = {
+      description: directive.description,
+      styles: directive.styles ?? ["adaptive electronica"],
+      mood: directive.mood ?? ["focused"],
+      energy: directive.energy,
+      bpmRange: directive.bpm ? [directive.bpm - 6, directive.bpm + 6] as [number, number] : undefined,
+      keyPreference: directive.key,
+      vocals: directive.vocals ?? "instrumental",
+      language: directive.language
+    };
     return {
-      intent: {
-        description: directive.description,
-        styles: directive.styles ?? ["adaptive electronica"],
-        mood: directive.mood ?? ["focused"],
-        energy: directive.energy,
-        bpmRange: directive.bpm ? [directive.bpm - 6, directive.bpm + 6] : undefined,
-        keyPreference: directive.key,
-        vocals: directive.vocals ?? "instrumental",
-        language: directive.language,
-        djTalkativeness: 0.35
+      musicalDirection: { intent, nextTrack: { ...directive, durationMs: 180_000 } },
+      onAirCue: { text: "You’ve found Robot Radio Infinity. Let’s build this signal around you.", purpose: "opening" },
+      memoryUpdates: {
+        listener: { preferences: [input.message], notablePhrases: [input.message] },
+        musicalThesis: directive.description,
+        intendedTrajectory: ["Establish the requested world", "Develop it through contrasting arrangement choices"],
+        productionFingerprint: fingerprint(directive)
       },
-      firstTrack: { ...directive, durationMs: 180_000 }
+      editorialNotes: ["Establish a distinctive original hook in the first eight seconds", "Leave a clean, lower-density outro for the next radio handoff"],
+      suggestedTiming: "opening"
     };
   }
 
@@ -99,7 +107,7 @@ export class MockLLMProvider implements LLMProvider {
     return { timing: "future", interruptCurrentTrack: false, confidence: 0.84 };
   }
 
-  async planUserIntent(input: UserIntentInput): Promise<UserIntentPlan> {
+  async planUserIntent(input: UserIntentInput): Promise<ProducerPlan> {
     await delay(Number(process.env.MOCK_PLANNER_LATENCY_MS ?? 850));
     const message = input.message.toLowerCase();
     const directive = directiveFromMessage(input.message);
@@ -118,61 +126,79 @@ export class MockLLMProvider implements LLMProvider {
           vocals: directive.vocals ?? input.currentIntent.vocals
         };
 
+    const nextTrack = isConversation
+      ? {
+          title: input.currentTrack?.title ?? "Hold This Feeling",
+          description: input.currentIntent.description,
+          styles: input.currentIntent.styles,
+          mood: input.currentIntent.mood,
+          energy: input.currentIntent.energy,
+          bpm: input.currentIntent.bpmRange
+            ? Math.round((input.currentIntent.bpmRange[0] + input.currentIntent.bpmRange[1]) / 2)
+            : undefined,
+          key: input.currentIntent.keyPreference,
+          vocals: input.currentIntent.vocals,
+          durationMs: 180_000
+        }
+      : { ...directive, durationMs: 180_000 };
+    const suggestedTiming = isConversation ? "conversation_only" as const
+      : includesAny(message, ["right now", "immediately", "switch this", "change this"]) ? "immediate" as const
+      : includesAny(message, ["next one", "next track", "next song"]) ? "next_track" as const
+      : "future" as const;
     return {
-      destinationIntent,
-      nextTrack: isConversation
-        ? {
-            title: input.currentTrack?.title ?? "Hold This Feeling",
-            description: input.currentIntent.description,
-            styles: input.currentIntent.styles,
-            mood: input.currentIntent.mood,
-            energy: input.currentIntent.energy,
-            bpm: input.currentIntent.bpmRange
-              ? Math.round((input.currentIntent.bpmRange[0] + input.currentIntent.bpmRange[1]) / 2)
-              : undefined,
-            key: input.currentIntent.keyPreference,
-            vocals: input.currentIntent.vocals,
-            durationMs: 180_000
-          }
-        : { ...directive, durationMs: 180_000 },
+      musicalDirection: { intent: destinationIntent, nextTrack },
+      onAirCue: {
+        text: isConversation ? "I hear you. I’ll keep the signal moving." : `I’ve got it — ${directive.title} is where we’re heading.`,
+        purpose: "listener_acknowledgement"
+      },
+      memoryUpdates: {
+        listener: isConversation
+          ? { callbacks: [input.message], notablePhrases: [input.message] }
+          : { preferences: [input.message], notablePhrases: [input.message] },
+        musicalThesis: destinationIntent.description,
+        intendedTrajectory: ["Respond to the latest listener direction", "Preserve continuity while making the change unmistakable"],
+        productionFingerprint: fingerprint(nextTrack)
+      },
+      editorialNotes: ["Make the requested change audible in the opening phrase", "Use a distinct hook and arrangement from recent production fingerprints"],
+      suggestedTiming
     };
   }
 
-  async planContinuity(input: ContinuityInput): Promise<ContinuityPlan> {
+  async planContinuity(input: ContinuityInput): Promise<ProducerPlan> {
     await delay(Number(process.env.MOCK_PLANNER_LATENCY_MS ?? 850));
     const intent = input.currentIntent;
-    const chapter = input.recentTracks.length;
+    const chapter = input.showState.recentProductionFingerprints.length;
     const energyShift = chapter % 2 === 0 ? 0.05 : -0.04;
     const energy = Math.min(1, Math.max(0, (intent.energy ?? 0.6) + energyShift));
     const shouldSpeak =
-      (intent.djTalkativeness ?? 0.25) >= 0.3 &&
+      input.showState.speechCadence.sessionTalkativeness >= 0.55 &&
       chapter > 0 &&
       chapter % 3 === 0 &&
-      input.recentDjLines.at(-1) !== "Same world, different corner — let’s see what is hiding over here.";
-    return {
-      nextTrack: {
-        title: chapter % 2 === 0 ? "Signals Through Glass" : "The Turn Between Rooms",
-        description: `${chapter % 2 === 0 ? "A spacious" : "A rhythm-led"} variation of ${intent.description}`,
-        styles: intent.styles,
-        mood: intent.mood,
-        energy,
-        bpm: intent.bpmRange
-          ? Math.round((intent.bpmRange[0] + intent.bpmRange[1]) / 2) + (chapter % 2 === 0 ? 2 : -2)
-          : 116,
-        key: intent.keyPreference ?? "E minor",
-        vocals: intent.vocals,
-        language: intent.language,
-        durationMs: 45_000
-      },
-      transition: { type: shouldSpeak ? "dj_link" : "simple_fade" }
+      input.showState.speechCadence.lastCuePurpose !== "tease";
+    const nextTrack: TrackDirective = {
+      title: chapter % 2 === 0 ? "Signals Through Glass" : "The Turn Between Rooms",
+      description: `${chapter % 2 === 0 ? "A spacious" : "A rhythm-led"} variation of ${intent.description}`,
+      styles: intent.styles,
+      mood: intent.mood,
+      energy,
+      bpm: intent.bpmRange
+        ? Math.round((intent.bpmRange[0] + intent.bpmRange[1]) / 2) + (chapter % 2 === 0 ? 2 : -2)
+        : 116,
+      key: intent.keyPreference ?? "E minor",
+      vocals: intent.vocals,
+      language: intent.language,
+      durationMs: 45_000
     };
-  }
-
-  async planDjLine(input: DJLineInput): Promise<DJLinePlan> {
-    await delay(Number(process.env.MOCK_URGENCY_LATENCY_MS ?? 180));
-    if (input.reason === "conversation") return { speak: true, text: "I hear you. I’ll keep the signal moving." };
-    if ((input.currentIntent.djTalkativeness ?? 0.25) < 0.3) return { speak: false };
-    return { speak: true, text: input.nextTrack ? `Coming up: ${input.nextTrack.title}.` : "Let’s turn the dial a little." };
+    return {
+      musicalDirection: { intent, nextTrack },
+      onAirCue: shouldSpeak ? { text: `Coming up: ${nextTrack.title}.`, purpose: "tease" } : undefined,
+      memoryUpdates: {
+        intendedTrajectory: ["Stay inside the current thesis", "Change the dominant production fingerprint"],
+        productionFingerprint: fingerprint(nextTrack)
+      },
+      editorialNotes: ["Avoid the instrumentation and hook shape in recent production fingerprints", "Keep the intro immediately legible and the outro crossfade-friendly"],
+      suggestedTiming: "continuity"
+    };
   }
 
   async repairTrackSpec(input: TrackRepairInput): Promise<TrackRepairPlan> {

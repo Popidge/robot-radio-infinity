@@ -99,7 +99,7 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .debugger { padding: 0 12px 12px; }
 .panel { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
-.metrics-grid { display: grid; grid-template-columns: 1fr 1fr 1.25fr; gap: 10px; }
+.metrics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .metric-card { padding: 16px; min-height: 205px; }
 .metric-card header, .log header { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font: 400 9px "DM Mono", monospace; text-transform: uppercase; letter-spacing: 0.08em; }
 .metric-card > strong { display: block; min-height: 42px; margin-top: 17px; font-size: 0.84rem; line-height: 1.45; }

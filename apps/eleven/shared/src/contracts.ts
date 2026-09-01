@@ -15,7 +15,6 @@ export interface MusicalIntent {
   keyPreference?: string;
   vocals?: string;
   language?: string;
-  djTalkativeness?: number;
 }
 
 export interface MusicalSnapshot {
@@ -46,6 +45,7 @@ export interface TrackDirective {
   language?: string;
   durationMs?: number;
   sections?: TrackSection[];
+  editorialNotes?: string[];
 }
 
 export interface TrackSpec extends TrackDirective {
@@ -99,33 +99,67 @@ export interface UrgencyAssessment {
   immediateTransition?: TransitionSketch;
 }
 
-export interface UserIntentPlan {
-  destinationIntent: MusicalIntent;
-  nextTrack: TrackDirective;
+export type OnAirCuePurpose = "opening" | "listener_acknowledgement" | "back_announce" | "tease" | "mid_track_observation";
+export type ProducerTimingSuggestion = "opening" | "conversation_only" | "future" | "next_track" | "immediate" | "continuity";
+
+export interface PresenterIdentity {
+  name: string;
+  identity: string;
+  voiceRules: string[];
 }
 
-export interface InitialIntentInput { requestId: string; message: string }
-export interface InitialIntentPlan { intent: MusicalIntent; firstTrack: TrackDirective }
-
-export interface ContinuityPlan {
-  intentPatch?: Partial<MusicalIntent>;
-  nextTrack: TrackDirective;
-  transition: { type: "simple_fade" | "dj_link" };
+export interface ListenerMemory {
+  preferences: string[];
+  dislikes: string[];
+  callbacks: string[];
+  notablePhrases: string[];
 }
 
-export interface DJLineInput {
-  requestId: string;
-  userMessage?: string;
-  reason: "startup" | "user_change" | "track_change" | "conversation";
-  currentIntent: MusicalIntent;
-  currentTrack: MusicalSnapshot | null;
-  nextTrack?: TrackDirective;
-  recentTracks: RecentTrack[];
-  recentUserMessages: string[];
-  recentDjLines: string[];
+export interface ShowState {
+  presenter: PresenterIdentity;
+  listener: ListenerMemory;
+  musicalThesis: {
+    current: string;
+    intendedTrajectory: string[];
+  };
+  recentProductionFingerprints: string[];
+  speechCadence: {
+    lastCueAt: number | null;
+    lastCuePurpose?: OnAirCuePurpose;
+    cooldownMs: number;
+    sessionTalkativeness: number;
+    cuesSpoken: number;
+  };
 }
 
-export interface DJLinePlan { speak: boolean; text?: string }
+export interface ShowMemoryUpdates {
+  listener?: {
+    preferences?: string[];
+    dislikes?: string[];
+    callbacks?: string[];
+    notablePhrases?: string[];
+  };
+  musicalThesis?: string;
+  intendedTrajectory?: string[];
+  productionFingerprint?: string;
+  sessionTalkativeness?: number;
+}
+
+export interface ProducerPlan {
+  musicalDirection: {
+    intent: MusicalIntent;
+    nextTrack: TrackDirective;
+  };
+  onAirCue?: {
+    text: string;
+    purpose: OnAirCuePurpose;
+  };
+  memoryUpdates: ShowMemoryUpdates;
+  editorialNotes: string[];
+  suggestedTiming: ProducerTimingSuggestion;
+}
+
+export interface InitialIntentInput { requestId: string; message: string; showState: ShowState }
 
 export interface TrackRepairInput {
   requestId: string;
@@ -144,17 +178,13 @@ export interface UrgencyInput {
 }
 export interface UserIntentInput extends UrgencyInput {
   remainingMs: number | null;
-  recentTracks: RecentTrack[];
-  recentUserMessages: string[];
-  recentDjLines: string[];
+  showState: ShowState;
 }
 export interface ContinuityInput {
   requestId: string;
   currentIntent: MusicalIntent;
   currentTrack: MusicalSnapshot | null;
-  recentTracks: RecentTrack[];
-  recentUserMessages: string[];
-  recentDjLines: string[];
+  showState: ShowState;
 }
 
 export interface PlaybackState {
@@ -202,7 +232,7 @@ export interface PendingUserRequest {
   revision: number;
   message: string;
   urgency?: UrgencyAssessment;
-  plan?: UserIntentPlan;
+  plan?: ProducerPlan;
   applied: boolean;
   resolution?: "conversation" | "deferred" | "next" | "immediate";
 }
@@ -216,7 +246,18 @@ export interface StationState {
   intentRevision: number;
   nextTrack: NextTrackState;
   transition: TransitionState;
-  dj: { speaking: boolean; speechId?: string; pending?: { speechId: string; text: string; revision: number; trackId?: string } };
+  showState: ShowState;
+  dj: {
+    speaking: boolean;
+    speechId?: string;
+    pending?: {
+      speechId: string;
+      text: string;
+      purpose: OnAirCuePurpose;
+      revision: number;
+      trackId?: string;
+    };
+  };
   recentEvents: StationEvent[];
   recentCommands: StationCommand[];
   recentTracks: RecentTrack[];
@@ -235,18 +276,16 @@ interface EventBase { at: number }
 export type StationEvent =
   | (EventBase & { type: "START_STATION"; sessionId: string; message: string })
   | (EventBase & { type: "STOP_STATION" })
-  | (EventBase & { type: "INITIAL_INTENT_RECEIVED"; requestId: string; plan: InitialIntentPlan })
+  | (EventBase & { type: "INITIAL_INTENT_RECEIVED"; requestId: string; plan: ProducerPlan })
   | (EventBase & { type: "INITIAL_INTENT_FAILED"; requestId: string; error: string })
   | (EventBase & { type: "USER_MESSAGE"; requestId: string; message: string })
   | (EventBase & { type: "NEXT_TRACK_HORIZON"; requestId: string; trackId: string })
   | (EventBase & { type: "URGENCY_ASSESSMENT_RECEIVED"; requestId: string; assessment: UrgencyAssessment })
   | (EventBase & { type: "URGENCY_ASSESSMENT_FAILED"; requestId: string; error: string })
-  | (EventBase & { type: "USER_PLAN_RECEIVED"; requestId: string; plan: UserIntentPlan })
+  | (EventBase & { type: "USER_PLAN_RECEIVED"; requestId: string; plan: ProducerPlan })
   | (EventBase & { type: "USER_PLAN_FAILED"; requestId: string; error: string })
-  | (EventBase & { type: "CONTINUITY_PLAN_RECEIVED"; requestId: string; plan: ContinuityPlan })
+  | (EventBase & { type: "CONTINUITY_PLAN_RECEIVED"; requestId: string; plan: ProducerPlan })
   | (EventBase & { type: "CONTINUITY_PLAN_FAILED"; requestId: string; error: string })
-  | (EventBase & { type: "DJ_LINE_RECEIVED"; requestId: string; revision: number; subjectTrackId?: string; plan: DJLinePlan })
-  | (EventBase & { type: "DJ_LINE_FAILED"; requestId: string; revision: number; subjectTrackId?: string; error: string })
   | (EventBase & { type: "TRACK_REPAIR_RECEIVED"; failedTrackId: string; requestId: string; attempt: number; plan: TrackRepairPlan })
   | (EventBase & { type: "TRACK_REPAIR_FAILED"; failedTrackId: string; requestId: string; error: string })
   | (EventBase & { type: "TRACK_GENERATION_STARTED"; trackId: string; revision: number; spec: TrackSpec })
@@ -280,7 +319,6 @@ export type StationCommand =
   | { type: "ASSESS_USER_MESSAGE"; input: UrgencyInput }
   | { type: "PLAN_USER_INTENT"; input: UserIntentInput }
   | { type: "PLAN_CONTINUITY"; input: ContinuityInput }
-  | { type: "PLAN_DJ_LINE"; revision: number; subjectTrackId?: string; input: DJLineInput }
   | { type: "REPAIR_TRACK_SPEC"; failedTrackId: string; input: TrackRepairInput }
   | { type: "SPEAK"; speechId: string; text: string }
   | { type: "FADE"; from: FadeSource; to: FadeTarget; trackId?: string; transitionId?: string; durationMs: number }
@@ -302,10 +340,9 @@ export interface MusicProvider { generate(spec: TrackSpec, generationRate: numbe
 export interface TransitionProvider { generate(spec: TransitionSpec, generationRate: number): Promise<MusicStream>; cancel(id: string): Promise<void> }
 export interface TTSProvider { speak(id: string, text: string): Promise<AudioStream>; cancel(id: string): Promise<void> }
 export interface LLMProvider {
-  planInitialIntent(input: InitialIntentInput): Promise<InitialIntentPlan>;
+  planInitialIntent(input: InitialIntentInput): Promise<ProducerPlan>;
   assessUrgency(input: UrgencyInput): Promise<UrgencyAssessment>;
-  planUserIntent(input: UserIntentInput): Promise<UserIntentPlan>;
-  planContinuity(input: ContinuityInput): Promise<ContinuityPlan>;
-  planDjLine(input: DJLineInput): Promise<DJLinePlan>;
+  planUserIntent(input: UserIntentInput): Promise<ProducerPlan>;
+  planContinuity(input: ContinuityInput): Promise<ProducerPlan>;
   repairTrackSpec(input: TrackRepairInput): Promise<TrackRepairPlan>;
 }

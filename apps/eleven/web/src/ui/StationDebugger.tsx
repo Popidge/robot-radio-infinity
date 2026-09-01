@@ -59,6 +59,7 @@ export function StationDebugger({ state }: StationDebuggerProps) {
             <div><dt>Stream</dt><dd title={state.transition.transitionId}>{state.transition.transitionId?.slice(-9) ?? "—"}</dd></div>
             <div><dt>Rate</dt><dd>{state.transition.generationRate?.toFixed(2) ?? "—"}×</dd></div>
             <div><dt>TTS</dt><dd>{state.dj.speaking ? "Speaking / ducked" : "Idle"}</dd></div>
+            <div><dt>Pending cue</dt><dd>{state.dj.pending?.purpose ?? "—"}</dd></div>
             <div><dt>Startup</dt><dd>{state.startup?.status ?? "—"}</dd></div>
           </dl>
         </article>
@@ -71,6 +72,19 @@ export function StationDebugger({ state }: StationDebuggerProps) {
             {state.intent.mood.map((mood) => <span key={mood}>{mood}</span>)}
           </div>
           <pre>{JSON.stringify(state.intent, null, 2)}</pre>
+        </article>
+
+        <article className="panel metric-card show-state-card">
+          <header><span>Producer memory</span><b className="status semantic">bounded</b></header>
+          <strong>{state.showState.musicalThesis.current}</strong>
+          <dl>
+            <div><dt>Presenter</dt><dd>{state.showState.presenter.name}</dd></div>
+            <div><dt>Preferences</dt><dd>{state.showState.listener.preferences.length}/8</dd></div>
+            <div><dt>Fingerprints</dt><dd>{state.showState.recentProductionFingerprints.length}/8</dd></div>
+            <div><dt>Talkativeness</dt><dd>{Math.round(state.showState.speechCadence.sessionTalkativeness * 100)}%</dd></div>
+            <div><dt>Last cue</dt><dd>{state.showState.speechCadence.lastCuePurpose ?? "—"}</dd></div>
+          </dl>
+          <pre>{JSON.stringify(state.showState, null, 2)}</pre>
         </article>
       </div>
 

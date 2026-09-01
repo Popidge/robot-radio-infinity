@@ -6,7 +6,7 @@ The browser owns the station state, event log, timing rules, buffers, and audio 
 
 Eleven Music v2 streams each full track as it generates. It also creates short instrumental transition clips for immediate changes and underrun protection.
 
-OpenAI makes scoped musical decisions. Deterministic browser code decides when audio starts, stops, fades, ducks, or waits.
+OpenAI makes scoped producer decisions. Deterministic browser code decides when audio starts, stops, fades, ducks, waits, or permits speech.
 
 ## Start with mocks
 
@@ -75,7 +75,7 @@ Each value can also be `mock`.
 
 ## Station flow
 
-The opening message starts one OpenAI planning call. The returned plan contains the musical intent, track title, and composition sections.
+The opening message starts one OpenAI producer call. The plan contains the musical direction, first track, show memory, and optional opening cue.
 
 The browser starts the first Eleven Music stream. ElevenLabs MP3 stays compressed across the server and WebSocket, then a browser worker decodes it. Playback starts after the decoded stream has a safe PCM buffer.
 
@@ -95,6 +95,33 @@ For a normal request, the browser saves the new intent. The next-track horizon t
 If a track stream is late, the browser starts an emergency transition. The transition prevents dead air while the track buffer grows.
 
 Every asynchronous request has a revision number. The reducer ignores results from an older listener request.
+
+## Producer and presenter
+
+The opening, listener, and horizon planners return the same `ProducerPlan` contract. Each plan contains these decisions:
+
+- One musical direction and one concrete next track
+- An optional on-air cue with one editorial purpose
+- Bounded updates for the show memory
+- Composition notes for Eleven Music
+- An advisory timing class
+
+The browser keeps a bounded `ShowState`. This state contains the presenter identity, voice rules, listener memory, musical thesis, production fingerprints, and speech cadence.
+
+A producer plan cannot start playback, a transition, or speech. The reducer ignores the advisory timing class when it selects the action.
+
+The fast urgency classifier remains separate. Its result tells the reducer whether a listener request is conversational, deferred, next-track, or immediate.
+
+The reducer permits a cue only in these windows:
+
+- The first track is playable and the opening cue has not expired.
+- A listener acknowledgement has a safe music or transition buffer.
+- A back-announce or tease occurs near a ready handoff.
+- A rare observation occurs away from both edges of a stable track.
+
+The reducer discards a cue when cooldown, talkativeness, buffer safety, revision state, or musical timing makes speech undesirable.
+
+The reducer merges the plan composition notes into the `TrackSpec`. The Eleven Music adapter adds these notes to each section as production direction.
 
 ## Music-provider errors
 
@@ -174,6 +201,6 @@ If fewer than 15 seconds remain and the next track is unsafe, the reducer starts
 
 ## Tests
 
-The reducer tests cover message races, classifier-first transitions, future requests, horizon generation, underruns, crossfades, and stale provider results.
+The reducer tests cover message races, producer memory bounds, cue windows, cooldown, classifier authority, horizon generation, underruns, crossfades, and stale results.
 
 The server tests cover provider selection, structured logs, static hosting, and encoded provider pass-through. Browser tests cover streaming PCM normalization across decoder chunk boundaries.

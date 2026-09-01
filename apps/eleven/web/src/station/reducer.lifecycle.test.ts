@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type {
-  ContinuityPlan,
   MusicalIntent,
+  ProducerPlan,
   StationCommand,
   StationEvent,
   StationState,
   TrackDirective,
-  TrackSpec,
-  UserIntentPlan
+  TrackSpec
 } from "@robot-radio/eleven-shared";
 import {
   MAX_TRACK_REPAIR_ATTEMPTS,
@@ -19,6 +18,7 @@ import {
   reduce
 } from "./reducer";
 import { createInitialState } from "./state";
+import { makeProducerPlan } from "./test-support";
 
 const intent: MusicalIntent = {
   description: "patient nocturnal synth soul",
@@ -28,8 +28,7 @@ const intent: MusicalIntent = {
   bpmRange: [104, 112],
   keyPreference: "E minor",
   vocals: "sparse original vocals",
-  language: "English",
-  djTalkativeness: 0.35
+  language: "English"
 };
 
 const continuation: TrackDirective = {
@@ -67,7 +66,7 @@ const harderTrack: TrackDirective = {
   durationMs: 180_000
 };
 
-const harderPlan: UserIntentPlan = { destinationIntent: harderIntent, nextTrack: harderTrack };
+const harderPlan: ProducerPlan = makeProducerPlan(harderIntent, harderTrack);
 
 function playingState(remainingMs = 90_000): StationState {
   return {
@@ -127,7 +126,7 @@ describe("station reducer normal lifecycles", () => {
     const openingPlanned = reduce(started.state, event({
       type: "INITIAL_INTENT_RECEIVED",
       requestId: "session",
-      plan: { intent, firstTrack: { ...continuation, title: "Signals Through Glass" } }
+      plan: makeProducerPlan(intent, { ...continuation, title: "Signals Through Glass" }, { suggestedTiming: "opening" })
     }));
     const openingGeneration = commandsOfType(openingPlanned.commands, "GENERATE_TRACK");
     expect(openingGeneration).toHaveLength(1);
@@ -142,9 +141,9 @@ describe("station reducer normal lifecycles", () => {
 
     const horizon = reduce(openingStarted.state, event({ type: "NEXT_TRACK_HORIZON", requestId: "horizon-1", trackId: openingSpec.id }));
     expect(horizon.commands.map((command) => command.type)).toEqual(["PLAN_CONTINUITY"]);
-    const continuityPlan: ContinuityPlan = { nextTrack: continuation, transition: { type: "simple_fade" } };
+    const continuityPlan = makeProducerPlan(intent, continuation, { suggestedTiming: "continuity" });
     const nextPlanned = reduce(horizon.state, event({ type: "CONTINUITY_PLAN_RECEIVED", requestId: "horizon-1", plan: continuityPlan }));
-    expect(nextPlanned.commands.map((command) => command.type)).toEqual(["GENERATE_TRACK", "PLAN_DJ_LINE"]);
+    expect(nextPlanned.commands.map((command) => command.type)).toEqual(["GENERATE_TRACK"]);
     const nextSpec = commandsOfType(nextPlanned.commands, "GENERATE_TRACK")[0]!.spec;
     expect(nextSpec.programmeId).toBe("horizon-1");
 
@@ -226,31 +225,28 @@ describe("station reducer normal lifecycles", () => {
   });
 
   it("keeps conversation-only messages out of the musical pipeline", () => {
+    const conversationPlan = makeProducerPlan(intent, harderTrack, {
+      onAirCue: { text: "It has found its voltage, hasn’t it?", purpose: "listener_acknowledgement" },
+      suggestedTiming: "conversation_only"
+    });
     let state = reduce(playingState(), event({ type: "USER_MESSAGE", requestId: "chat", message: "This is fantastic." })).state;
-    state = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "chat", plan: harderPlan })).state;
+    state = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "chat", plan: conversationPlan })).state;
     const classified = reduce(state, event({
       type: "URGENCY_ASSESSMENT_RECEIVED",
       requestId: "chat",
       assessment: { timing: "conversation_only", interruptCurrentTrack: false, confidence: 0.99 }
     }));
 
-    expect(classified.commands.map((command) => command.type)).toEqual(["PLAN_DJ_LINE"]);
+    expect(classified.commands.map((command) => command.type)).toEqual(["SPEAK"]);
     expect(classified.state.intent).toEqual(intent);
     expect(classified.state.nextTrack.status).toBe("none");
     expect(classified.state.transition.status).toBe("none");
-    const spoken = reduce(classified.state, event({
-      type: "DJ_LINE_RECEIVED",
-      requestId: "dj-chat",
-      revision: classified.state.intentRevision,
-      plan: { speak: true, text: "It has found its voltage, hasn't it?" }
-    }));
-    expect(spoken.commands.map((command) => command.type)).toEqual(["SPEAK"]);
-    expect(spoken.state.dj.speaking).toBe(true);
+    expect(classified.state.dj.speaking).toBe(true);
   });
 
   it.each([
     [NEXT_TRACK_HORIZON_MS + NEXT_TRACK_REQUEST_GUARD_MS + 1, "deferred", []],
-    [NEXT_TRACK_HORIZON_MS + NEXT_TRACK_REQUEST_GUARD_MS, "next", ["GENERATE_TRANSITION", "GENERATE_TRACK", "PLAN_DJ_LINE"]]
+    [NEXT_TRACK_HORIZON_MS + NEXT_TRACK_REQUEST_GUARD_MS, "next", ["GENERATE_TRANSITION", "GENERATE_TRACK"]]
   ] as const)("handles a next-track request at the promotion boundary (%i ms)", (remainingMs, resolution, commandTypes) => {
     let state = reduce(playingState(remainingMs), event({ type: "USER_MESSAGE", requestId: "boundary", message: "Make the next one harder." })).state;
     state = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "boundary", plan: harderPlan })).state;

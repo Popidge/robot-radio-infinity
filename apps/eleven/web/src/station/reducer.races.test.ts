@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type {
-  ContinuityPlan,
   MusicalIntent,
+  ProducerPlan,
   StationCommand,
   StationEvent,
   StationState,
-  TrackDirective,
-  UserIntentPlan
+  TrackDirective
 } from "@robot-radio/eleven-shared";
 import { reduce } from "./reducer";
 import { createInitialState } from "./state";
+import { makeProducerPlan } from "./test-support";
 
 const currentIntent: MusicalIntent = {
   description: "warm nocturnal analogue synth soul",
@@ -18,8 +18,7 @@ const currentIntent: MusicalIntent = {
   energy: 0.5,
   bpmRange: [104, 112],
   keyPreference: "E minor",
-  vocals: "sparse original vocals",
-  djTalkativeness: 0.35
+  vocals: "sparse original vocals"
 };
 
 const destinationIntent: MusicalIntent = {
@@ -43,10 +42,7 @@ const destinationTrack: TrackDirective = {
   durationMs: 180_000
 };
 
-const userPlan: UserIntentPlan = {
-  destinationIntent,
-  nextTrack: destinationTrack
-};
+const userPlan: ProducerPlan = makeProducerPlan(destinationIntent, destinationTrack);
 
 const horizonTrack: TrackDirective = {
   title: "Neon Patience",
@@ -59,10 +55,7 @@ const horizonTrack: TrackDirective = {
   durationMs: 180_000
 };
 
-const horizonPlan: ContinuityPlan = {
-  nextTrack: horizonTrack,
-  transition: { type: "simple_fade" }
-};
+const horizonPlan: ProducerPlan = makeProducerPlan(currentIntent, horizonTrack, { suggestedTiming: "continuity" });
 
 function playingState(remainingMs = 50_000): StationState {
   return {
@@ -149,7 +142,6 @@ describe("station reducer race safety", () => {
 
       expect(commandsOfType(raced.commands, "GENERATE_TRANSITION")).toHaveLength(1);
       expect(commandsOfType(raced.commands, "GENERATE_TRACK")).toHaveLength(1);
-      expect(commandsOfType(raced.commands, "PLAN_DJ_LINE")).toHaveLength(1);
       expect(commandsOfType(raced.commands, "PLAN_CONTINUITY")).toHaveLength(0);
       expect(raced.state.nextTrack.spec?.programmeId).toBe("user-close");
       expect(raced.state.transition.spec?.programmeId).toBe("user-close");
@@ -258,12 +250,16 @@ describe("station reducer race safety", () => {
     expect(planned.state.nextTrack.spec?.programmeId).toBe("user-close");
   });
 
-  it("ignores late audio and DJ callbacks from a cancelled horizon programme", () => {
+  it("ignores late audio and discards the cue from a cancelled horizon programme", () => {
+    const horizonWithCue = makeProducerPlan(currentIntent, horizonTrack, {
+      onAirCue: { text: "Here is the track you cancelled.", purpose: "tease" },
+      suggestedTiming: "continuity"
+    });
     const horizonStarted = reduce(playingState(), horizon);
     const horizonPlanned = reduce(horizonStarted.state, event({
       type: "CONTINUITY_PLAN_RECEIVED",
       requestId: "horizon-current",
-      plan: horizonPlan
+      plan: horizonWithCue
     }));
     const oldTrackId = horizonPlanned.state.nextTrack.trackId!;
     const requested = reduce(horizonPlanned.state, userMessage).state;
@@ -271,14 +267,7 @@ describe("station reducer race safety", () => {
 
     const late = runEvents(resolved.state, [
       event({ type: "TRACK_FIRST_AUDIO", trackId: oldTrackId, revision: 1, latencyMs: 4_000 }),
-      event({ type: "TRACK_READY", trackId: oldTrackId, revision: 1 }),
-      event({
-        type: "DJ_LINE_RECEIVED",
-        requestId: "dj-horizon-current",
-        revision: 1,
-        subjectTrackId: oldTrackId,
-        plan: { speak: true, text: "Here is the track you cancelled." }
-      })
+      event({ type: "TRACK_READY", trackId: oldTrackId, revision: 1 })
     ]);
 
     expect(late.commands).toEqual([]);
@@ -287,32 +276,32 @@ describe("station reducer race safety", () => {
   });
 
   it("does not let a stale TTS completion release a newer speech lease or trigger handoff", () => {
+    const spokenPlan = makeProducerPlan(destinationIntent, destinationTrack, {
+      onAirCue: { text: "Stand by for concrete weather.", purpose: "listener_acknowledgement" },
+      suggestedTiming: "immediate"
+    });
     let state = reduce(playingState(), userMessage).state;
     state = reduce(state, urgency).state;
-    state = reduce(state, fullPlan).state;
+    state = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "user-close", plan: spokenPlan })).state;
     const transitionId = state.transition.transitionId!;
     const trackId = state.nextTrack.trackId!;
     const revision = state.intentRevision;
+    state = reduce(state, event({
+      type: "TRANSITION_BUFFER_UPDATED", transitionId, revision, bufferedMs: 12_000, generatedMs: 12_000, generationRate: 4
+    })).state;
     state = reduce(state, event({ type: "TRANSITION_READY", transitionId, revision })).state;
     state = reduce(state, event({ type: "TRANSITION_STARTED", transitionId, revision })).state;
     state = reduce(state, event({ type: "TRACK_READY", trackId, revision })).state;
-    state = reduce(state, event({
-      type: "DJ_LINE_RECEIVED",
-      requestId: "new-speech",
-      revision,
-      subjectTrackId: trackId,
-      plan: { speak: true, text: "Stand by for concrete weather." }
-    })).state;
-    state = reduce(state, event({ type: "TTS_STARTED", speechId: "new-speech" })).state;
+    state = reduce(state, event({ type: "TTS_STARTED", speechId: "cue-user-close" })).state;
     state = reduce(state, event({ type: "TRANSITION_MINIMUM_PLAYED", transitionId, revision })).state;
-    expect(state.dj).toMatchObject({ speaking: true, speechId: "new-speech" });
+    expect(state.dj).toMatchObject({ speaking: true, speechId: "cue-user-close" });
 
     const staleFinished = reduce(state, event({ type: "TTS_FINISHED", speechId: "old-speech" }));
     expect(staleFinished.commands).toEqual([]);
-    expect(staleFinished.state.dj).toMatchObject({ speaking: true, speechId: "new-speech" });
+    expect(staleFinished.state.dj).toMatchObject({ speaking: true, speechId: "cue-user-close" });
     expect(staleFinished.state.phase).toBe("transition");
 
-    const currentFinished = reduce(staleFinished.state, event({ type: "TTS_FINISHED", speechId: "new-speech" }));
+    const currentFinished = reduce(staleFinished.state, event({ type: "TTS_FINISHED", speechId: "cue-user-close" }));
     expect(commandsOfType(currentFinished.commands, "FADE")).toHaveLength(1);
     expect(currentFinished.state.phase).toBe("handoff");
   });

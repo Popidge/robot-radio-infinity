@@ -1,17 +1,12 @@
 import {
-  continuityPlanSchema,
-  djLinePlanSchema,
-  initialIntentPlanSchema,
+  producerPlanSchema,
   trackRepairPlanSchema,
   urgencyAssessmentSchema,
-  userIntentPlanSchema,
   type AudioStreamEncoding,
   type ContinuityInput,
-  type ContinuityPlan,
   type InitialIntentInput,
-  type InitialIntentPlan,
-  type DJLineInput,
-  type DJLinePlan,
+  type ProducerPlan,
+  type ShowState,
   type StationCommand,
   type StationEvent,
   type TrackSpec,
@@ -20,8 +15,7 @@ import {
   type TrackRepairPlan,
   type UrgencyAssessment,
   type UrgencyInput,
-  type UserIntentInput,
-  type UserIntentPlan
+  type UserIntentInput
 } from "@robot-radio/eleven-shared";
 import { StreamAudioDecoder } from "../audio/stream-audio-decoder";
 
@@ -45,6 +39,7 @@ export interface StationDebugState {
   nextTrack: unknown;
   transition: unknown;
   dj: unknown;
+  showState: ShowState;
   pendingUser?: unknown;
   startup?: unknown;
   horizonFiredForTrackId: string | null;
@@ -105,20 +100,16 @@ export class ServerClient {
     return this.post("/api/llm/urgency", input, urgencyAssessmentSchema.parse);
   }
 
-  planInitialIntent(input: InitialIntentInput): Promise<InitialIntentPlan> {
-    return this.post("/api/llm/initial-intent", input, initialIntentPlanSchema.parse);
+  planInitialIntent(input: InitialIntentInput): Promise<ProducerPlan> {
+    return this.post("/api/llm/initial-intent", input, producerPlanSchema.parse);
   }
 
-  planUserIntent(input: UserIntentInput): Promise<UserIntentPlan> {
-    return this.post("/api/llm/user-plan", input, userIntentPlanSchema.parse);
+  planUserIntent(input: UserIntentInput): Promise<ProducerPlan> {
+    return this.post("/api/llm/user-plan", input, producerPlanSchema.parse);
   }
 
-  planContinuity(input: ContinuityInput): Promise<ContinuityPlan> {
-    return this.post("/api/llm/continuity-plan", input, continuityPlanSchema.parse);
-  }
-
-  planDjLine(input: DJLineInput): Promise<DJLinePlan> {
-    return this.post("/api/llm/dj-line", input, djLinePlanSchema.parse);
+  planContinuity(input: ContinuityInput): Promise<ProducerPlan> {
+    return this.post("/api/llm/continuity-plan", input, producerPlanSchema.parse);
   }
 
   repairTrackSpec(input: TrackRepairInput): Promise<TrackRepairPlan> {
