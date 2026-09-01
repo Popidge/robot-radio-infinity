@@ -237,11 +237,11 @@ describe("station reducer normal lifecycles", () => {
       assessment: { timing: "conversation_only", interruptCurrentTrack: false, confidence: 0.99 }
     }));
 
-    expect(classified.commands.map((command) => command.type)).toEqual(["SPEAK"]);
+    expect(classified.commands.map((command) => command.type)).toEqual(["PREPARE_SPEECH"]);
     expect(classified.state.intent).toEqual(intent);
     expect(classified.state.nextTrack.status).toBe("none");
     expect(classified.state.transition.status).toBe("none");
-    expect(classified.state.dj.speaking).toBe(true);
+    expect(classified.state.dj.prepared).toMatchObject({ status: "preparing", purpose: "listener_acknowledgement" });
   });
 
   it.each([

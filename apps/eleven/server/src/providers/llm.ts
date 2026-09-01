@@ -79,7 +79,11 @@ export class MockLLMProvider implements LLMProvider {
     };
     return {
       musicalDirection: { intent, nextTrack: { ...directive, durationMs: 180_000 } },
-      onAirCue: { text: "You’ve found Robot Radio Infinity. Let’s build this signal around you.", purpose: "opening" },
+      onAirCue: {
+        text: "You’ve found Robot Radio Infinity. Let’s build this signal around you.",
+        purpose: "opening",
+        linkFingerprint: "station welcome + listener ownership"
+      },
       memoryUpdates: {
         listener: { preferences: [input.message], notablePhrases: [input.message] },
         musicalThesis: directive.description,
@@ -158,7 +162,8 @@ export class MockLLMProvider implements LLMProvider {
       musicalDirection: { intent: destinationIntent, nextTrack },
       onAirCue: {
         text: isConversation ? "I hear you. I’ll keep the signal moving." : `I’ve got it — ${directive.title} is where we’re heading.`,
-        purpose: "listener_acknowledgement"
+        purpose: "listener_acknowledgement",
+        linkFingerprint: isConversation ? "direct reply + continuity" : "request acknowledgement + action"
       },
       memoryUpdates: {
         listener: isConversation
@@ -177,16 +182,17 @@ export class MockLLMProvider implements LLMProvider {
     await delay(Number(process.env.MOCK_PLANNER_LATENCY_MS ?? 850));
     const intent = input.currentIntent;
     const chapter = input.showState.recentProductionFingerprints.length;
-    const energyShift = chapter % 2 === 0 ? 0.05 : -0.04;
+    const autonomyShift = input.autonomy.mode === "exploratory" ? 0.12 : input.autonomy.mode === "cruise" ? 0.07 : 0;
+    const energyShift = (chapter % 2 === 0 ? 0.05 : -0.04) + autonomyShift;
     const energy = Math.min(1, Math.max(0, (intent.energy ?? 0.6) + energyShift));
     const shouldSpeak =
       input.showState.speechCadence.sessionTalkativeness >= 0.55 &&
       chapter > 0 &&
       chapter % 3 === 0 &&
-      input.showState.speechCadence.lastCuePurpose !== "tease";
+      input.showState.speechCadence.lastCuePurpose !== "back_announce";
     const nextTrack: TrackDirective = {
       title: chapter % 2 === 0 ? "Signals Through Glass" : "The Turn Between Rooms",
-      description: `${chapter % 2 === 0 ? "A spacious" : "A rhythm-led"} variation of ${intent.description}`,
+      description: `${input.autonomy.mode === "exploratory" ? "A bold adjacent" : input.autonomy.mode === "cruise" ? "A developing" : chapter % 2 === 0 ? "A spacious" : "A rhythm-led"} variation of ${intent.description}`,
       styles: intent.styles,
       mood: intent.mood,
       energy,
@@ -200,9 +206,17 @@ export class MockLLMProvider implements LLMProvider {
     };
     return {
       musicalDirection: { intent, nextTrack },
-      onAirCue: shouldSpeak ? { text: `Coming up: ${nextTrack.title}.`, purpose: "tease" } : undefined,
+      onAirCue: shouldSpeak ? {
+        text: `That was ${input.currentTrack?.title ?? "the last signal"} — the rhythm did all the arguing for me.`,
+        purpose: "back_announce",
+        linkFingerprint: "title back-announce + production-detail reflection"
+      } : undefined,
       memoryUpdates: {
-        intendedTrajectory: ["Stay inside the current thesis", "Change the dominant production fingerprint"],
+        intendedTrajectory: input.autonomy.mode === "exploratory"
+          ? ["Make one bold but legible adjacent move", "Leave the route open for an immediate listener correction"]
+          : input.autonomy.mode === "cruise"
+            ? ["Develop the current thesis without a format clock", "Change one dominant production fingerprint"]
+            : ["Stay inside the current thesis", "Change the dominant production fingerprint"],
         productionFingerprint: fingerprint(nextTrack)
       },
       editorialNotes: ["Avoid the instrumentation and hook shape in recent production fingerprints", "Keep the intro immediately legible and the outro crossfade-friendly"],

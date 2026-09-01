@@ -1,4 +1,4 @@
-import type { MusicWordTimestamp, StationCommand, StationEvent, StationState, TrackSpec, TransitionSpec } from "@robot-radio/eleven-shared";
+import type { MusicWordTimestamp, StationCommand, StationElementSpec, StationEvent, StationState, TrackSpec, TransitionSpec } from "@robot-radio/eleven-shared";
 import { AudioEngine } from "../audio/audio-engine";
 import { ServerClient, type RemoteStream, type StationDebugState } from "../services/server-client";
 import { NEXT_TRACK_HORIZON_MS, SAFE_START_BUFFER_MS, TRANSITION_SAFE_BUFFER_MS, reduce } from "./reducer";
@@ -38,6 +38,7 @@ export class StationRuntime {
   private readonly transitions = new Map<string, GeneratedRuntime<TransitionSpec>>();
   private readonly specs = new Map<string, TrackSpec>();
   private readonly ttsStreams = new Map<string, RemoteStream>();
+  private readonly cartStreams = new Map<string, RemoteStream>();
   private readonly transitionMinimumTimers = new Map<string, number>();
   private progressTimer: number | null = null;
   private endedTrackId: string | null = null;
@@ -98,6 +99,8 @@ export class StationRuntime {
       transition: this.state.transition,
       dj: this.state.dj,
       showState: this.state.showState,
+      carts: this.state.carts,
+      autonomy: this.state.autonomy,
       pendingUser: this.state.pendingUser,
       startup: this.state.startup,
       horizonFiredForTrackId: this.state.horizonFiredForTrackId,
@@ -139,8 +142,11 @@ export class StationRuntime {
           this.dispatch(nowEvent({ type: "TRACK_REPAIR_RECEIVED", failedTrackId: command.failedTrackId, requestId: command.input.requestId, attempt: command.input.attempt, plan }));
           return;
         }
-        case "SPEAK": this.speak(command.speechId, command.text); return;
+        case "PREPARE_SPEECH": this.prepareSpeech(command.speechId, command.text); return;
+        case "PLAY_SPEECH": this.playSpeech(command.speechId); return;
         case "CANCEL_SPEECH": this.cancelSpeech(command.speechId); return;
+        case "GENERATE_CART": this.generateCart(command.spec); return;
+        case "PLAY_CART": this.playCart(command.cartId); return;
         case "PLAY_TRACK": this.audio.playTrack(command.trackId, command.durationMs); this.trackStarted(command.trackId); return;
         case "PLAY_TRANSITION": this.playTransition(command.transitionId, command.durationMs, command.minimumPlayMs); return;
         case "FADE":
@@ -165,6 +171,7 @@ export class StationRuntime {
         case "REPAIR_TRACK_SPEC": this.dispatch(nowEvent({ type: "TRACK_REPAIR_FAILED", failedTrackId: command.failedTrackId, requestId: command.input.requestId, error: message })); break;
         case "GENERATE_TRACK": this.dispatch(nowEvent({ type: "TRACK_GENERATION_FAILED", trackId: command.spec.id, revision: command.spec.revision, error: message })); break;
         case "GENERATE_TRANSITION": this.dispatch(nowEvent({ type: "TRANSITION_GENERATION_FAILED", transitionId: command.spec.id, revision: command.spec.revision, error: message })); break;
+        case "GENERATE_CART": this.dispatch(nowEvent({ type: "CART_GENERATION_FAILED", cartId: command.spec.id, error: message })); break;
       }
     }
   }
@@ -260,6 +267,38 @@ export class StationRuntime {
     return rate >= 1 ? minimumMs : Math.min(durationMs, Math.max(minimumMs, (1 - rate) * durationMs + 1_000));
   }
 
+  private generateCart(spec: StationElementSpec): void {
+    if (this.cartStreams.has(spec.id)) return;
+    const chunks: Float32Array[] = [];
+    let generatedMs = 0;
+    const stream = this.client.streamMusic(spec.track, 5, {
+      onStart: () => undefined,
+      onChunk: (pcm) => {
+        generatedMs += (pcm.length / 2 / 48_000) * 1_000;
+        chunks.push(pcm.slice());
+      },
+      onEnd: () => {
+        this.cartStreams.delete(spec.id);
+        if (!chunks.length) {
+          this.dispatch(nowEvent({ type: "CART_GENERATION_FAILED", cartId: spec.id, error: "Station element returned no playable audio." }));
+          return;
+        }
+        this.audio.registerCart(spec.id, chunks, Math.max(1, Math.round(generatedMs)), spec.mixType);
+        this.dispatch(nowEvent({ type: "CART_READY", cartId: spec.id }));
+      },
+      onError: (error) => {
+        this.cartStreams.delete(spec.id);
+        this.dispatch(nowEvent({ type: "CART_GENERATION_FAILED", cartId: spec.id, error: error.message }));
+      }
+    });
+    this.cartStreams.set(spec.id, stream);
+  }
+
+  private playCart(id: string): void {
+    this.audio.playCart(id, () => this.dispatch(nowEvent({ type: "CART_FINISHED", cartId: id })));
+    this.dispatch(nowEvent({ type: "CART_STARTED", cartId: id }));
+  }
+
   private playTransition(id: string, fadeMs: number, minimumPlayMs: number): void {
     const runtime = this.transitions.get(id);
     if (!runtime || this.state.transition.status === "audible") return;
@@ -293,17 +332,8 @@ export class StationRuntime {
     this.audio.discardTransition();
   }
 
-  private speak(id: string, text: string): void {
-    let started = false;
+  private prepareSpeech(id: string, text: string): void {
     let generatedMs = 0;
-    const requestedAt = performance.now();
-    const startPlayback = (): void => {
-      if (started || generatedMs <= 0) return;
-      started = true;
-      this.audio.duckForSpeech();
-      this.audio.playTTS(id);
-      this.dispatch(nowEvent({ type: "TTS_STARTED", speechId: id }));
-    };
     this.audio.createTTS(id, null, () => {
       this.audio.restoreAfterSpeech();
       this.audio.finishTTS(id);
@@ -316,23 +346,29 @@ export class StationRuntime {
       onChunk: (pcm) => {
         generatedMs += (pcm.length / 2 / 48_000) * 1_000;
         this.audio.enqueue(id, pcm);
-        const rate = generatedMs / Math.max(1, performance.now() - requestedAt);
-        if (generatedMs >= 1_200 && rate >= 1.15) startPlayback();
       },
       onEnd: () => {
         this.audio.markInputEnded(id);
-        if (generatedMs > 0) startPlayback();
-        else { this.audio.finishTTS(id); this.dispatch(nowEvent({ type: "TTS_FINISHED", speechId: id })) }
+        if (generatedMs > 0) this.dispatch(nowEvent({ type: "TTS_PREPARED", speechId: id, durationMs: Math.round(generatedMs) }));
+        else {
+          this.audio.finishTTS(id);
+          this.dispatch(nowEvent({ type: "TTS_PREPARATION_FAILED", speechId: id, error: "TTS returned no playable audio." }));
+        }
       },
-      onError: () => {
-        this.audio.restoreAfterSpeech();
+      onError: (error) => {
         this.audio.finishTTS(id);
-        this.dispatch(nowEvent({ type: "TTS_FINISHED", speechId: id }));
+        this.dispatch(nowEvent({ type: "TTS_PREPARATION_FAILED", speechId: id, error: error.message }));
         this.ttsStreams.get(id)?.close();
         this.ttsStreams.delete(id);
       }
     });
     this.ttsStreams.set(id, stream);
+  }
+
+  private playSpeech(id: string): void {
+    this.audio.duckForSpeech();
+    this.audio.playTTS(id);
+    this.dispatch(nowEvent({ type: "TTS_STARTED", speechId: id }));
   }
 
   private cancelSpeech(id: string): void {
@@ -385,8 +421,9 @@ export class StationRuntime {
     for (const [id, runtime] of this.tracks) { runtime.stream.close(); void this.client.cancelMusic(id) }
     for (const runtime of this.transitions.values()) runtime.stream.close();
     for (const stream of this.ttsStreams.values()) stream.close();
+    for (const stream of this.cartStreams.values()) stream.close();
     for (const timer of this.transitionMinimumTimers.values()) window.clearTimeout(timer);
-    this.tracks.clear(); this.transitions.clear(); this.ttsStreams.clear(); this.transitionMinimumTimers.clear();
+    this.tracks.clear(); this.transitions.clear(); this.ttsStreams.clear(); this.cartStreams.clear(); this.transitionMinimumTimers.clear();
     await this.audio.stopAll();
   }
 

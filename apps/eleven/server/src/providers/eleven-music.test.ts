@@ -114,6 +114,34 @@ describe("Eleven Music composition plans", () => {
     expect(chunk.positive_styles).toContain("vocal language: English");
   });
 
+  it("keeps a dry station ID free from the normal spoken-word prohibition", async () => {
+    const fetchMock = vi.fn(async (_input: string | URL | Request) => rejectedResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new ElevenMusicApiProvider("test-key");
+    const dryId: TrackSpec = {
+      ...instrumentalTrack,
+      id: "dry-id",
+      title: "Robot Radio Infinity dry ID",
+      styles: ["dry station ID", "professional radio ident"],
+      vocals: "dry professional spoken radio voice",
+      durationMs: 3_000,
+      sections: [{
+        name: "Dry station ID",
+        durationMs: 3_000,
+        description: "Isolated voice with no music or effects.",
+        lyrics: "Robot Radio Infinity"
+      }]
+    };
+
+    await expect(provider.generate(dryId, 5)).rejects.toThrow(/HTTP 422/);
+
+    const chunk = requestBody(fetchMock).composition_plan.chunks[0];
+    expect(chunk.text).toBe("[Dry station ID]\nRobot Radio Infinity");
+    expect(chunk.positive_styles).toContain("isolated dry spoken station ident");
+    expect(chunk.negative_styles).toContain("music");
+    expect(chunk.negative_styles).not.toContain("spoken-word narration");
+  });
+
   it("extracts MP3 audio and word timing slices from the detailed event stream", async () => {
     const first = new Uint8Array([0x49, 0x44, 0x33, 3]);
     const second = new Uint8Array([4, 5, 6, 7]);

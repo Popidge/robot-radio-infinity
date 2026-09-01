@@ -23,6 +23,7 @@ export interface MusicalSnapshot {
   bpm?: number;
   key?: string;
   energy?: number;
+  presentationFacts?: string[];
 }
 
 export interface TrackSection {
@@ -99,7 +100,7 @@ export interface UrgencyAssessment {
   immediateTransition?: TransitionSketch;
 }
 
-export type OnAirCuePurpose = "opening" | "listener_acknowledgement" | "back_announce" | "tease" | "mid_track_observation";
+export type OnAirCuePurpose = "opening" | "listener_acknowledgement" | "back_announce" | "handoff_setup" | "mid_track_observation";
 export type ProducerTimingSuggestion = "opening" | "conversation_only" | "future" | "next_track" | "immediate" | "continuity";
 
 export interface PresenterIdentity {
@@ -123,6 +124,7 @@ export interface ShowState {
     intendedTrajectory: string[];
   };
   recentProductionFingerprints: string[];
+  recentLinkFingerprints: string[];
   speechCadence: {
     lastCueAt: number | null;
     lastCuePurpose?: OnAirCuePurpose;
@@ -153,6 +155,7 @@ export interface ProducerPlan {
   onAirCue?: {
     text: string;
     purpose: OnAirCuePurpose;
+    linkFingerprint?: string;
   };
   memoryUpdates: ShowMemoryUpdates;
   editorialNotes: string[];
@@ -185,6 +188,14 @@ export interface ContinuityInput {
   currentIntent: MusicalIntent;
   currentTrack: MusicalSnapshot | null;
   showState: ShowState;
+  autonomy: AutonomyContext;
+}
+
+export type AutonomyMode = "interactive" | "cruise" | "exploratory";
+export interface AutonomyContext {
+  mode: AutonomyMode;
+  tracksSinceListener: number;
+  silenceMs: number;
 }
 
 export interface MusicWordTimestamp {
@@ -195,6 +206,42 @@ export interface MusicWordTimestamp {
 
 export interface MusicStreamMetadata {
   wordTimestamps?: MusicWordTimestamp[];
+}
+
+export type PresentationMapSource = "planned" | "observed" | "reconciled";
+export interface TrackSectionWindow {
+  name: string;
+  startMs: number;
+  endMs: number;
+  hasLyrics: boolean;
+  transitionFriendly: boolean;
+  confidence: number;
+}
+export interface VocalRegion {
+  startMs: number;
+  endMs: number;
+  sectionName: string;
+  source: PresentationMapSource;
+  confidence: number;
+}
+export interface MicWindow {
+  startMs: number;
+  endMs: number;
+  kind: "intro" | "instrumental" | "outro" | "vocal_gap";
+  source: PresentationMapSource;
+  confidence: number;
+}
+export interface TrackPresentationMap {
+  trackId: string;
+  durationMs: number;
+  sections: TrackSectionWindow[];
+  vocalRegions: VocalRegion[];
+  safeMicWindows: MicWindow[];
+  introEndMs?: number;
+  firstVocalMs?: number;
+  lastVocalEndMs?: number;
+  outroStartMs?: number;
+  endStyle: "cold" | "fade" | "resolved" | "unknown";
 }
 
 export interface PlaybackState {
@@ -211,8 +258,33 @@ export interface PlaybackState {
   mood?: string[];
   vocals?: string;
   sections?: TrackSection[];
+  editorialNotes?: string[];
   wordTimestamps?: MusicWordTimestamp[];
+  presentationMap?: TrackPresentationMap;
   bufferedMs: number;
+}
+
+export type StationElementKind = "id" | "sting";
+export type StationElementMixType = "dry" | "wet";
+export type StationElementPlacement = "over_music" | "clean_bed" | "cold_open" | "transition_gap" | "exposed_handoff";
+export interface StationElementSpec {
+  id: string;
+  kind: StationElementKind;
+  mixType: StationElementMixType;
+  title: string;
+  durationMs: number;
+  allowedPlacements: StationElementPlacement[];
+  track: TrackSpec;
+}
+export interface StationElementEntry extends StationElementSpec {
+  status: "registered" | "generating" | "ready" | "failed";
+  useCount: number;
+  lastUsedAt?: number;
+  error?: string;
+}
+export interface StationElementRegistry {
+  entries: StationElementEntry[];
+  playingId?: string;
 }
 
 export interface NextTrackState {
@@ -278,7 +350,25 @@ export interface StationState {
       purpose: OnAirCuePurpose;
       revision: number;
       trackId?: string;
+      linkFingerprint?: string;
     };
+    prepared?: {
+      speechId: string;
+      text: string;
+      purpose: OnAirCuePurpose;
+      revision: number;
+      trackId?: string;
+      linkFingerprint: string;
+      status: "preparing" | "ready" | "playing";
+      durationMs?: number;
+      readyAt?: number;
+    };
+  };
+  carts: StationElementRegistry;
+  autonomy: {
+    lastListenerAt: number | null;
+    tracksSinceListener: number;
+    mode: AutonomyMode;
   };
   recentEvents: StationEvent[];
   recentCommands: StationCommand[];
@@ -327,8 +417,14 @@ export type StationEvent =
   | (EventBase & { type: "TRANSITION_STARTED"; transitionId: string; revision: number })
   | (EventBase & { type: "TRANSITION_MINIMUM_PLAYED"; transitionId: string; revision: number })
   | (EventBase & { type: "TRANSITION_ENDED"; transitionId: string; revision: number })
+  | (EventBase & { type: "TTS_PREPARED"; speechId: string; durationMs: number })
+  | (EventBase & { type: "TTS_PREPARATION_FAILED"; speechId: string; error: string })
   | (EventBase & { type: "TTS_STARTED"; speechId: string })
   | (EventBase & { type: "TTS_FINISHED"; speechId: string })
+  | (EventBase & { type: "CART_READY"; cartId: string })
+  | (EventBase & { type: "CART_GENERATION_FAILED"; cartId: string; error: string })
+  | (EventBase & { type: "CART_STARTED"; cartId: string })
+  | (EventBase & { type: "CART_FINISHED"; cartId: string })
   | (EventBase & { type: "TRACK_STARTED"; trackId: string; revision: number; spec: TrackSpec })
   | (EventBase & { type: "TRACK_PROGRESS"; trackId: string; playheadMs: number; remainingMs: number; bufferedMs: number })
   | (EventBase & { type: "TRACK_ENDED"; trackId: string });
@@ -345,8 +441,11 @@ export type StationCommand =
   | { type: "PLAN_USER_INTENT"; input: UserIntentInput }
   | { type: "PLAN_CONTINUITY"; input: ContinuityInput }
   | { type: "REPAIR_TRACK_SPEC"; failedTrackId: string; input: TrackRepairInput }
-  | { type: "SPEAK"; speechId: string; text: string }
+  | { type: "PREPARE_SPEECH"; speechId: string; text: string }
+  | { type: "PLAY_SPEECH"; speechId: string }
   | { type: "CANCEL_SPEECH"; speechId: string }
+  | { type: "GENERATE_CART"; spec: StationElementSpec }
+  | { type: "PLAY_CART"; cartId: string }
   | { type: "FADE"; from: FadeSource; to: FadeTarget; trackId?: string; transitionId?: string; durationMs: number }
   | { type: "PLAY_TRACK"; trackId: string; durationMs: number }
   | { type: "PLAY_TRANSITION"; transitionId: string; durationMs: number; minimumPlayMs: number }

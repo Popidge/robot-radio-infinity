@@ -3,6 +3,7 @@ import type { MusicalIntent, ProducerPlan, StationEvent, StationState, TrackDire
 import { NORMAL_CROSSFADE_MS, UNDERRUN_THREAT_MS, compileTrackSpec, reduce } from "./reducer";
 import { createInitialState } from "./state";
 import { makeProducerPlan } from "./test-support";
+import { buildTrackPresentationMap } from "./presentation-map";
 
 const intent: MusicalIntent = {
   description: "nocturnal analogue synth soul",
@@ -37,6 +38,11 @@ const nextDirective: TrackDirective = {
 const plan: ProducerPlan = makeProducerPlan(darkerIntent, nextDirective);
 
 function playingState(remainingMs = 90_000): StationState {
+  const sections = [
+    { name: "Instrumental intro", durationMs: 30_000, description: "Sparse clean bed", transitionFriendly: true },
+    { name: "Instrumental development", durationMs: 120_000, description: "Stable instrumental body" },
+    { name: "Instrumental outro", durationMs: 30_000, description: "Reduced clean bed", transitionFriendly: true }
+  ];
   return {
     ...createInitialState(),
     running: true,
@@ -53,6 +59,8 @@ function playingState(remainingMs = 90_000): StationState {
       bpm: 108,
       key: "E minor",
       energy: 0.55,
+      sections,
+      presentationMap: buildTrackPresentationMap("current", 180_000, sections),
       bufferedMs: 90_000
     }
   };
@@ -82,7 +90,8 @@ describe("ElevenLabs station reducer", () => {
     expect(started.commands.map((command) => command.type)).toEqual(["PLAN_INITIAL_INTENT"]);
 
     const openingSections = [
-      { name: "Verse", durationMs: 90_000, description: "Close vocal", lyrics: "Rain on the glass\nSignal coming through" },
+      { name: "Instrumental intro", durationMs: 8_000, description: "Sparse presenter ramp", transitionFriendly: true },
+      { name: "Verse", durationMs: 82_000, description: "Close vocal", lyrics: "Rain on the glass\nSignal coming through" },
       { name: "Outro", durationMs: 90_000, description: "Instrumental handoff", transitionFriendly: true }
     ];
     const openingPlan = makeProducerPlan(intent, { title: "Wet Neon", description: intent.description, sections: openingSections }, {
@@ -105,20 +114,27 @@ describe("ElevenLabs station reducer", () => {
     expect(planned.state.nextTrack.spec?.editorialNotes).toEqual(openingPlan.editorialNotes);
     expect(planned.state.showState.listener.preferences).toEqual(["rainy synth soul"]);
     expect(planned.state.showState.musicalThesis.current).toBe("A rain-soaked late-night soul transmission");
-    expect(planned.commands.some((command) => command.type === "SPEAK")).toBe(false);
+    expect(planned.state.showState.recentLinkFingerprints).toEqual(["opening: direct concise link"]);
+    expect(planned.commands.some((command) => command.type === "PLAY_SPEECH")).toBe(false);
+    expect(planned.commands.map((command) => command.type)).toContain("PREPARE_SPEECH");
 
     const trackId = planned.state.nextTrack.trackId!;
     const revision = planned.state.nextTrack.revision!;
-    let state = reduce(planned.state, event({
+    let state = reduce(planned.state, event({ type: "TTS_PREPARED", speechId: "cue-start-1", durationMs: 2_000 }, 2_000)).state;
+    state = reduce(state, event({
       type: "TRACK_BUFFER_UPDATED", trackId, revision, bufferedMs: 12_000, generatedMs: 15_000, generationRate: 4
     })).state;
     const ready = reduce(state, event({ type: "TRACK_READY", trackId, revision }));
     expect(ready.commands.map((command) => command.type)).toEqual(["PLAY_TRACK"]);
     const audible = reduce(ready.state, event({ type: "TRACK_STARTED", trackId, revision, spec: planned.state.nextTrack.spec! }));
-    expect(audible.commands).toEqual([{ type: "SPEAK", speechId: "cue-start-1", text: openingPlan.onAirCue!.text }]);
-    expect(audible.state.showState.speechCadence).toMatchObject({ lastCuePurpose: "opening", cuesSpoken: 1 });
+    expect(audible.commands.map((command) => command.type)).toEqual(["GENERATE_CART", "GENERATE_CART"]);
+    const ramp = reduce(audible.state, event({
+      type: "TRACK_PROGRESS", trackId, playheadMs: 5_600, remainingMs: 174_400, bufferedMs: 12_000
+    }, 8_000));
+    expect(ramp.commands).toEqual([{ type: "PLAY_SPEECH", speechId: "cue-start-1" }]);
+    expect(ramp.state.showState.speechCadence).toMatchObject({ lastCuePurpose: "opening", cuesSpoken: 1 });
     expect(audible.state.playback.sections).toEqual(openingSections);
-    expect(audible.state.conversation.map(({ role, text }) => ({ role, text }))).toEqual([
+    expect(ramp.state.conversation.map(({ role, text }) => ({ role, text }))).toEqual([
       { role: "listener", text: "rainy synth soul" },
       { role: "dj", text: openingPlan.onAirCue!.text }
     ]);
@@ -383,7 +399,7 @@ describe("ElevenLabs station reducer", () => {
         pending: {
           speechId: "cue-old",
           text: "Coming up: the track that no longer exists.",
-          purpose: "tease",
+          purpose: "handoff_setup",
           revision: 1,
           trackId: "discarded-track"
         }
@@ -422,17 +438,17 @@ describe("ElevenLabs station reducer", () => {
     const unsafe = reduce(state, event({
       type: "TRACK_PROGRESS", trackId: "current", playheadMs: 91_000, remainingMs: 89_000, bufferedMs: 2_000
     }, 5_000));
-    expect(unsafe.commands).toEqual([]);
-    expect(unsafe.state.dj.pending?.speechId).toBe("cue-buffered-ack");
+    expect(unsafe.commands.map((command) => command.type)).toEqual(["PREPARE_SPEECH"]);
+    expect(unsafe.state.dj.prepared).toMatchObject({ speechId: "cue-buffered-ack", status: "preparing" });
 
-    state = unsafe.state;
+    state = reduce(unsafe.state, event({ type: "TTS_PREPARED", speechId: "cue-buffered-ack", durationMs: 1_000 }, 5_500)).state;
     const safe = reduce(state, event({
       type: "TRACK_PROGRESS", trackId: "current", playheadMs: 92_000, remainingMs: 88_000, bufferedMs: 5_000
     }, 6_000));
-    expect(safe.commands.map((command) => command.type)).toEqual(["SPEAK"]);
+    expect(safe.commands.map((command) => command.type)).toEqual(["PLAY_SPEECH"]);
   });
 
-  it("authorizes a tease only inside the deterministic handoff window", () => {
+  it("authorizes a handoff setup only inside the deterministic handoff window", () => {
     const spec = compileTrackSpec("teased-track", 1, nextDirective, darkerIntent);
     const state: StationState = {
       ...playingState(20_000),
@@ -444,20 +460,22 @@ describe("ElevenLabs station reducer", () => {
       dj: {
         muted: false,
         speaking: false,
-        pending: { speechId: "cue-tease", text: "The next room has heavier walls.", purpose: "tease", revision: 1, trackId: spec.id }
+        pending: { speechId: "cue-tease", text: "The next room has heavier walls.", purpose: "handoff_setup", revision: 1, trackId: spec.id }
       }
     };
 
     const early = reduce(state, event({
       type: "TRACK_PROGRESS", trackId: "current", playheadMs: 161_000, remainingMs: 19_000, bufferedMs: 19_000
     }, 10_000));
-    expect(early.commands).toEqual([]);
-    expect(early.state.dj.pending?.speechId).toBe("cue-tease");
+    expect(early.commands.map((command) => command.type)).toEqual(["PREPARE_SPEECH"]);
+    expect(early.state.dj.prepared).toMatchObject({ speechId: "cue-tease", status: "preparing" });
 
-    const window = reduce(early.state, event({
-      type: "TRACK_PROGRESS", trackId: "current", playheadMs: 162_000, remainingMs: 18_000, bufferedMs: 18_000
-    }, 11_000));
-    expect(window.commands).toEqual([{ type: "SPEAK", speechId: "cue-tease", text: "The next room has heavier walls." }]);
+    const prepared = reduce(early.state, event({ type: "TTS_PREPARED", speechId: "cue-tease", durationMs: 3_000 }, 11_000));
+    expect(prepared.commands).toEqual([]);
+    const window = reduce(prepared.state, event({
+      type: "TRACK_PROGRESS", trackId: "current", playheadMs: 176_600, remainingMs: 3_400, bufferedMs: 18_000
+    }, 12_000));
+    expect(window.commands).toEqual([{ type: "PLAY_SPEECH", speechId: "cue-tease" }]);
   });
 
   it("authorizes a rare observation only inside the middle of a stable track", () => {
@@ -482,18 +500,18 @@ describe("ElevenLabs station reducer", () => {
     };
 
     const edge = reduce(state, event({
-      type: "TRACK_PROGRESS", trackId: "current", playheadMs: 44_999, remainingMs: 135_001, bufferedMs: 90_000
+      type: "TRACK_PROGRESS", trackId: "current", playheadMs: 44_000, remainingMs: 136_000, bufferedMs: 90_000
     }, 10_000));
-    expect(edge.commands).toEqual([]);
-    expect(edge.state.dj.pending?.speechId).toBe("cue-mid-track");
+    expect(edge.commands.map((command) => command.type)).toEqual(["PREPARE_SPEECH"]);
+    const prepared = reduce(edge.state, event({ type: "TTS_PREPARED", speechId: "cue-mid-track", durationMs: 2_000 }, 10_500));
+    expect(prepared.commands).toEqual([]);
 
-    const middle = reduce(edge.state, event({
+    const middle = reduce(prepared.state, event({
       type: "TRACK_PROGRESS", trackId: "current", playheadMs: 45_000, remainingMs: 135_000, bufferedMs: 90_000
     }, 11_000));
     expect(middle.commands).toEqual([{
-      type: "SPEAK",
-      speechId: "cue-mid-track",
-      text: "That tiny bass hesitation is holding the whole track open."
+      type: "PLAY_SPEECH",
+      speechId: "cue-mid-track"
     }]);
   });
 
@@ -665,6 +683,7 @@ describe("ElevenLabs station reducer", () => {
     let state = reduce(playingState(), event({ type: "USER_MESSAGE", requestId: "spoken", message: "gabber now" })).state;
     state = reduce(state, event({ type: "URGENCY_ASSESSMENT_RECEIVED", requestId: "spoken", assessment: immediateAssessment() })).state;
     state = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "spoken", plan: spokenPlan })).state;
+    state = reduce(state, event({ type: "TTS_PREPARED", speechId: "cue-spoken", durationMs: 2_000 }, 2_000)).state;
     const transitionId = state.transition.transitionId!;
     const trackId = state.nextTrack.trackId!;
     state = reduce(state, event({
@@ -672,7 +691,7 @@ describe("ElevenLabs station reducer", () => {
     })).state;
     state = reduce(state, event({ type: "TRANSITION_READY", transitionId, revision: state.intentRevision })).state;
     const line = reduce(state, event({ type: "TRANSITION_STARTED", transitionId, revision: state.intentRevision }));
-    expect(line.commands.map((command) => command.type)).toEqual(["SPEAK"]);
+    expect(line.commands.map((command) => command.type)).toEqual(["PLAY_SPEECH"]);
     expect(line.state.dj.speaking).toBe(true);
     state = line.state;
     state = reduce(state, event({ type: "TRACK_READY", trackId, revision: state.intentRevision })).state;
@@ -680,5 +699,73 @@ describe("ElevenLabs station reducer", () => {
     expect(minimum.commands).toEqual([]);
     const finished = reduce(minimum.state, event({ type: "TTS_FINISHED", speechId: "cue-spoken" }));
     expect(finished.commands.some((command) => command.type === "FADE" && command.trackId === trackId)).toBe(true);
+  });
+
+  it("registers reusable dry and wet station elements, then uses the dry ID sparingly in cruise", () => {
+    const started = reduce(createInitialState(), event({ type: "START_STATION", sessionId: "carts", message: "slow neon soul" }));
+    const planned = reduce(started.state, event({
+      type: "INITIAL_INTENT_RECEIVED",
+      requestId: "carts",
+      plan: makeProducerPlan(intent, { title: "First Light", description: intent.description })
+    }));
+    expect(planned.state.carts.entries.map(({ kind, mixType, status }) => ({ kind, mixType, status }))).toEqual([
+      { kind: "id", mixType: "dry", status: "registered" },
+      { kind: "sting", mixType: "wet", status: "registered" }
+    ]);
+    const firstTrack = reduce(planned.state, event({
+      type: "TRACK_STARTED",
+      trackId: planned.state.nextTrack.trackId!,
+      revision: planned.state.nextTrack.revision!,
+      spec: planned.state.nextTrack.spec!
+    }));
+    const cartCommands = firstTrack.commands.filter((command) => command.type === "GENERATE_CART");
+    expect(cartCommands).toHaveLength(2);
+    expect(firstTrack.state.carts.entries.map(({ kind, mixType, status }) => ({ kind, mixType, status }))).toEqual([
+      { kind: "id", mixType: "dry", status: "generating" },
+      { kind: "sting", mixType: "wet", status: "generating" }
+    ]);
+
+    const dryId = firstTrack.state.carts.entries.find((entry) => entry.mixType === "dry")!.id;
+    const cruising: StationState = {
+      ...playingState(130_000),
+      autonomy: { lastListenerAt: 1_000, tracksSinceListener: 2, mode: "cruise" },
+      carts: {
+        entries: firstTrack.state.carts.entries.map((entry) => ({ ...entry, status: "ready" as const }))
+      }
+    };
+    const played = reduce(cruising, event({
+      type: "TRACK_PROGRESS", trackId: "current", playheadMs: 50_000, remainingMs: 130_000, bufferedMs: 90_000
+    }, 500_000));
+    expect(played.commands).toEqual([{ type: "PLAY_CART", cartId: dryId }]);
+    expect(played.state.carts.entries.find((entry) => entry.id === dryId)).toMatchObject({ useCount: 1, lastUsedAt: 500_000 });
+
+    const finished = reduce(played.state, event({ type: "CART_FINISHED", cartId: dryId }, 503_000));
+    expect(finished.state.carts.playingId).toBeUndefined();
+    const repeated = reduce(finished.state, event({
+      type: "TRACK_PROGRESS", trackId: "current", playheadMs: 55_000, remainingMs: 125_000, bufferedMs: 85_000
+    }, 504_000));
+    expect(repeated.commands).toEqual([]);
+  });
+
+  it("moves from listener-led radio into elastic cruise and exploration, then resets instantly on a listener turn", () => {
+    const cruiseState: StationState = {
+      ...playingState(49_000),
+      autonomy: { lastListenerAt: 1_000, tracksSinceListener: 2, mode: "interactive" }
+    };
+    const cruise = reduce(cruiseState, event({ type: "NEXT_TRACK_HORIZON", requestId: "cruise-horizon", trackId: "current" }, 100_000));
+    expect(cruise.state.autonomy.mode).toBe("cruise");
+    expect(cruise.commands.find((command) => command.type === "PLAN_CONTINUITY")?.input.autonomy).toEqual({
+      mode: "cruise", tracksSinceListener: 2, silenceMs: 99_000
+    });
+
+    const exploratoryState: StationState = {
+      ...playingState(49_000),
+      autonomy: { lastListenerAt: 1_000, tracksSinceListener: 4, mode: "interactive" }
+    };
+    const exploratory = reduce(exploratoryState, event({ type: "NEXT_TRACK_HORIZON", requestId: "explore-horizon", trackId: "current" }, 100_000));
+    expect(exploratory.state.autonomy.mode).toBe("exploratory");
+
+    const listener = reduce(exploratory.state, event({ type: "USER_MESSAGE", requestId: "back", message: "Give me sparkly J-pop next." }, 101_000));
+    expect(listener.state.autonomy).toEqual({ lastListenerAt: 101_000, tracksSinceListener: 0, mode: "interactive" });
   });
 });

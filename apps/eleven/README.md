@@ -101,25 +101,41 @@ Every asynchronous request has a revision number. The reducer ignores results fr
 The opening, listener, and horizon planners return the same `ProducerPlan` contract. Each plan contains these decisions:
 
 - One musical direction and one concrete next track
-- An optional on-air cue with one editorial purpose
+- An optional on-air cue with one editorial purpose and one link fingerprint
 - Bounded updates for the show memory
 - Composition notes for Eleven Music
 - An advisory timing class
 
-The browser keeps a bounded `ShowState`. This state contains the presenter identity, voice rules, listener memory, musical thesis, production fingerprints, and speech cadence.
+The browser keeps a bounded `ShowState`. This state contains presenter rules, listener memory, the musical thesis, production fingerprints, link fingerprints, and speech cadence.
 
-A producer plan cannot start playback, a transition, or speech. The reducer ignores the advisory timing class when it selects the action.
+A producer plan cannot start playback, a transition, or speech. The reducer ignores the advisory timing class when it selects an action.
+
+The browser builds a `TrackPresentationMap` from the planned sections. It then reconciles this map with the observed Eleven Music word timestamps.
+
+The reconciliation matches only authored lyric words. It does not interpret timestamped composition instructions as audible vocals.
+
+The runtime prepares each TTS asset before its mic window. The preparation does not duck the music or start the TTS asset.
 
 The fast urgency classifier remains separate. Its result tells the reducer whether a listener request is conversational, deferred, next-track, or immediate.
 
 The reducer permits a cue only in these windows:
 
-- The first track is playable and the opening cue has not expired.
-- A listener acknowledgement has a safe music or transition buffer.
-- A back-announce or tease occurs near a ready handoff.
-- A rare observation occurs away from both edges of a stable track.
+- The prepared opening cue fits before the observed first vocal.
+- The prepared listener reply fits in a clean bed or transition.
+- The prepared back-announce finishes near a ready handoff.
+- The prepared observation fits in a rare instrumental gap.
 
-The reducer discards a cue when cooldown, talkativeness, buffer safety, revision state, or musical timing makes speech undesirable.
+The reducer starts prepared speech only when the full duration fits. The reducer discards speech when the cooldown, buffer, revision, or music blocks it.
+
+Back-announces use the real track title and supplied presentation facts. The planner varies each link against the recent link fingerprints.
+
+The station-element registry prepares one dry ID and one wet sting. The browser can replay these audio assets without a new music request.
+
+The dry ID can play over an authorized clean bed. The wet sting stays available for an exposed handoff and never plays over full music.
+
+The station remains listener-led. After two autonomous tracks, cruise mode develops the current thesis without a format clock.
+
+After four autonomous tracks, exploratory mode makes one bolder adjacent move. A listener message returns the station to interactive mode immediately.
 
 The reducer merges the plan composition notes into the `TrackSpec`. The Eleven Music adapter adds these notes to each section as production direction.
 
@@ -201,6 +217,8 @@ If fewer than 15 seconds remain and the next track is unsafe, the reducer starts
 
 ## Tests
 
-The reducer tests cover message races, producer memory bounds, cue windows, cooldown, classifier authority, horizon generation, underruns, crossfades, and stale results.
+The reducer tests cover message races, bounded memory, mic windows, prepared speech, station elements, autonomy, underruns, crossfades, and stale results.
+
+The presentation-map tests use the retained Eleven Music corpus. These tests cover observed vocal ramps, dense vocals, instrumental beds, and false instruction timestamps.
 
 The server tests cover provider selection, structured logs, static hosting, and encoded provider pass-through. Browser tests cover streaming PCM normalization across decoder chunk boundaries.

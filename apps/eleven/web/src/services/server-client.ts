@@ -42,6 +42,8 @@ export interface StationDebugState {
   transition: unknown;
   dj: unknown;
   showState: ShowState;
+  carts?: unknown;
+  autonomy?: unknown;
   pendingUser?: unknown;
   startup?: unknown;
   horizonFiredForTrackId: string | null;

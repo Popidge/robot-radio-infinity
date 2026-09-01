@@ -24,7 +24,10 @@ function commandSummary(command: StationCommand): string {
   if (command.type === "GENERATE_TRACK") return command.spec.title;
   if (command.type === "GENERATE_TRANSITION") return command.spec.description;
   if (command.type === "FADE") return `${command.from} → ${command.to} · ${milliseconds(command.durationMs)}`;
-  if (command.type === "SPEAK") return `“${command.text}”`;
+  if (command.type === "PREPARE_SPEECH") return `“${command.text}”`;
+  if (command.type === "PLAY_SPEECH") return command.speechId;
+  if (command.type === "GENERATE_CART") return `${command.spec.mixType} ${command.spec.kind} · ${command.spec.title}`;
+  if (command.type === "PLAY_CART") return command.cartId;
   if (command.type === "CANCEL_SPEECH") return command.speechId;
   if (command.type === "CANCEL_TRACK" || command.type === "PLAY_TRACK") return command.trackId;
   if (command.type === "CANCEL_TRANSITION" || command.type === "PLAY_TRANSITION") return command.transitionId;
@@ -59,8 +62,10 @@ export function StationDebugger({ state }: StationDebuggerProps) {
             <div><dt>Buffer</dt><dd>{milliseconds(state.transition.bufferedMs)}</dd></div>
             <div><dt>Stream</dt><dd title={state.transition.transitionId}>{state.transition.transitionId?.slice(-9) ?? "—"}</dd></div>
             <div><dt>Rate</dt><dd>{state.transition.generationRate?.toFixed(2) ?? "—"}×</dd></div>
-            <div><dt>TTS</dt><dd>{state.dj.muted ? "Muted" : state.dj.speaking ? "Speaking / ducked" : "Idle"}</dd></div>
+            <div><dt>TTS</dt><dd>{state.dj.muted ? "Muted" : state.dj.speaking ? "Speaking / ducked" : state.dj.prepared?.status ?? "Idle"}</dd></div>
             <div><dt>Pending cue</dt><dd>{state.dj.pending?.purpose ?? "—"}</dd></div>
+            <div><dt>Station elements</dt><dd>{state.carts.entries.filter((entry) => entry.status === "ready").length}/{state.carts.entries.length} ready</dd></div>
+            <div><dt>Autonomy</dt><dd>{state.autonomy.mode}</dd></div>
             <div><dt>Startup</dt><dd>{state.startup?.status ?? "—"}</dd></div>
           </dl>
         </article>
@@ -82,6 +87,7 @@ export function StationDebugger({ state }: StationDebuggerProps) {
             <div><dt>Presenter</dt><dd>{state.showState.presenter.name}</dd></div>
             <div><dt>Preferences</dt><dd>{state.showState.listener.preferences.length}/8</dd></div>
             <div><dt>Fingerprints</dt><dd>{state.showState.recentProductionFingerprints.length}/8</dd></div>
+            <div><dt>Link shapes</dt><dd>{state.showState.recentLinkFingerprints.length}/8</dd></div>
             <div><dt>Talkativeness</dt><dd>{Math.round(state.showState.speechCadence.sessionTalkativeness * 100)}%</dd></div>
             <div><dt>Last cue</dt><dd>{state.showState.speechCadence.lastCuePurpose ?? "—"}</dd></div>
           </dl>

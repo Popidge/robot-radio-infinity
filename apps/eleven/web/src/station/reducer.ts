@@ -7,6 +7,7 @@ import type {
   ShowMemoryUpdates,
   ShowState,
   StationCommand,
+  StationElementSpec,
   StationEvent,
   StationState,
   TrackDirective,
@@ -18,6 +19,7 @@ import type {
   UserIntentInput
 } from "@robot-radio/eleven-shared";
 import { createInitialState } from "./state";
+import { buildTrackPresentationMap } from "./presentation-map";
 
 export const NEXT_TRACK_HORIZON_MS = Number(import.meta.env.VITE_NEXT_TRACK_HORIZON_MS ?? 50_000);
 export const NEXT_TRACK_REQUEST_GUARD_MS = 10_000;
@@ -31,8 +33,15 @@ export const TRANSITION_DURATION_MS = 30_000;
 export const MAX_TRACK_REPAIR_ATTEMPTS = 2;
 export const PROGRAM_TRACK_DURATION_MS = Number(import.meta.env.VITE_PROGRAM_TRACK_DURATION_MS ?? 180_000);
 export const SPEECH_BUFFER_GUARD_MS = 4_000;
-export const HANDOFF_CUE_WINDOW_MS = 18_000;
 export const MID_TRACK_CUE_EDGE_MS = 45_000;
+export const SPEECH_WINDOW_TAIL_MS = 420;
+export const SPEECH_WINDOW_LEAD_MS = 180;
+export const MAX_PREPARED_SPEECH_WAIT_MS = 30_000;
+export const CRUISE_TRACK_THRESHOLD = 2;
+export const EXPLORATORY_TRACK_THRESHOLD = 4;
+export const CRUISE_SILENCE_MS = 8 * 60_000;
+export const EXPLORATORY_SILENCE_MS = 18 * 60_000;
+export const CART_REPEAT_COOLDOWN_MS = 12 * 60_000;
 
 export interface Reduction { state: StationState; commands: StationCommand[] }
 
@@ -41,12 +50,17 @@ function midpoint(range?: [number, number]): number | undefined {
 }
 
 function snapshot(state: StationState): MusicalSnapshot {
+  const sectionFacts = (state.playback.sections ?? []).slice(0, 5).map((section) => {
+    const lyric = section.lyrics?.split("\n").map((line) => line.trim()).find(Boolean);
+    return `${section.name}: ${section.description}${lyric ? `; lyric “${lyric}”` : ""}`.slice(0, 300);
+  });
   return {
     title: state.playback.title ?? undefined,
     styleSummary: state.playback.styleSummary ?? state.intent.description,
     bpm: state.playback.bpm ?? midpoint(state.intent.bpmRange),
     key: state.playback.key ?? state.intent.keyPreference,
-    energy: state.playback.energy ?? state.intent.energy
+    energy: state.playback.energy ?? state.intent.energy,
+    presentationFacts: [...(state.playback.editorialNotes ?? []), ...sectionFacts].slice(0, 8)
   };
 }
 
@@ -78,6 +92,81 @@ function planDirective(plan: ProducerPlan): TrackDirective {
       ...plan.editorialNotes
     ])].slice(0, 8)
   };
+}
+
+function compileStationElements(sessionId: string, revision: number, presenterName: string): StationElementSpec[] {
+  const dryId = `cart-${sessionId}-dry-id`;
+  const wetSting = `cart-${sessionId}-wet-sting`;
+  return [
+    {
+      id: dryId,
+      kind: "id",
+      mixType: "dry",
+      title: `${presenterName} dry ID`,
+      durationMs: 3_000,
+      allowedPlacements: ["over_music", "clean_bed", "cold_open"],
+      track: compileTrackSpec(dryId, revision, {
+        title: `${presenterName} dry ID`,
+        description: `A reusable, completely dry spoken station ident saying only “${presenterName}”. No music or effects.`,
+        styles: ["dry station ID", "professional radio ident", "transparent background", "tight broadcast compression"],
+        mood: ["confident", "concise"],
+        energy: 0.58,
+        bpm: 100,
+        key: "C major",
+        vocals: "dry professional spoken radio voice, saying only the supplied station name",
+        language: "English",
+        durationMs: 3_000,
+        sections: [{
+          name: "Dry station ID",
+          durationMs: 3_000,
+          description: "Isolated voice, exact clean start and stop, no music, melody, ambience, reverb, or effects.",
+          lyrics: presenterName,
+          transitionFriendly: true
+        }]
+      }, {
+        description: "dry station ID",
+        styles: ["dry station ID"],
+        mood: ["confident"],
+        energy: 0.58,
+        bpmRange: [100, 100],
+        keyPreference: "C major",
+        vocals: "dry spoken voice"
+      }, sessionId)
+    },
+    {
+      id: wetSting,
+      kind: "sting",
+      mixType: "wet",
+      title: `${presenterName} wet sting`,
+      durationMs: 5_000,
+      allowedPlacements: ["transition_gap", "exposed_handoff", "cold_open"],
+      track: compileTrackSpec(wetSting, revision, {
+        title: `${presenterName} wet sting`,
+        description: "A reusable five-second instrumental sonic logo: three rising synthetic notes and one bold drum punctuation with an exact clean stop.",
+        styles: ["instrumental station sting", "modern radio imaging", "bright synthetic print-colour energy", "wide polished mix"],
+        mood: ["bold", "electric"],
+        energy: 0.8,
+        bpm: 120,
+        key: "C major",
+        vocals: "instrumental, no vocals",
+        durationMs: 5_000,
+        sections: [{
+          name: "Station sting",
+          durationMs: 5_000,
+          description: "Three-note original sonic logo, one drum punctuation, no voice, no fade or reverb tail.",
+          transitionFriendly: true
+        }]
+      }, {
+        description: "instrumental station sting",
+        styles: ["modern radio imaging"],
+        mood: ["bold"],
+        energy: 0.8,
+        bpmRange: [120, 120],
+        keyPreference: "C major",
+        vocals: "instrumental"
+      }, sessionId)
+    }
+  ];
 }
 
 function compileHorizonTrackSpec(id: string, revision: number, directive: TrackDirective, intent: MusicalIntent, programmeId: string): TrackSpec {
@@ -149,13 +238,23 @@ function userIntentInput(state: StationState, requestId: string, message: string
   };
 }
 
-function continuityInput(state: StationState, requestId: string): ContinuityInput {
+function continuityInput(state: StationState, requestId: string, at: number): ContinuityInput {
+  const silenceMs = state.autonomy.lastListenerAt === null ? 0 : Math.max(0, at - state.autonomy.lastListenerAt);
   return {
     requestId,
     currentIntent: state.intent,
     currentTrack: state.playback.trackId ? snapshot(state) : null,
-    showState: state.showState
+    showState: state.showState,
+    autonomy: { mode: state.autonomy.mode, tracksSinceListener: state.autonomy.tracksSinceListener, silenceMs }
   };
+}
+
+function autonomyAt(state: StationState, at: number): StationState["autonomy"] {
+  const silenceMs = state.autonomy.lastListenerAt === null ? 0 : Math.max(0, at - state.autonomy.lastListenerAt);
+  const mode = state.autonomy.tracksSinceListener >= EXPLORATORY_TRACK_THRESHOLD || silenceMs >= EXPLORATORY_SILENCE_MS
+    ? "exploratory"
+    : state.autonomy.tracksSinceListener >= CRUISE_TRACK_THRESHOLD || silenceMs >= CRUISE_SILENCE_MS ? "cruise" : "interactive";
+  return { ...state.autonomy, mode };
 }
 
 function appendUnique(items: string[], additions: string[] | undefined, limit: number): string[] {
@@ -207,6 +306,7 @@ function applyShowMemory(
       fingerprint ? [fingerprint] : undefined,
       8
     ),
+    recentLinkFingerprints: showState.recentLinkFingerprints,
     speechCadence: {
       ...showState.speechCadence,
       sessionTalkativeness: updates.sessionTalkativeness ?? showState.speechCadence.sessionTalkativeness
@@ -221,18 +321,25 @@ function plannedCue(
   trackId?: string
 ): StationState["dj"]["pending"] {
   if (!plan.onAirCue) return undefined;
-  return { speechId, text: plan.onAirCue.text, purpose: plan.onAirCue.purpose, revision, trackId };
+  return {
+    speechId,
+    text: plan.onAirCue.text,
+    purpose: plan.onAirCue.purpose,
+    revision,
+    trackId,
+    linkFingerprint: plan.onAirCue.linkFingerprint ?? `${plan.onAirCue.purpose}: direct concise link`
+  };
 }
 
 function append<T>(items: T[], item: T, limit: number): T[] { return [...items, item].slice(-limit) }
 
 function finish(state: StationState, event: StationEvent, commands: StationCommand[]): Reduction {
   const recentDjLines = commands.reduce(
-    (lines, command) => command.type === "SPEAK" ? append(lines, command.text, 12) : lines,
+    (lines, command) => command.type === "PREPARE_SPEECH" ? append(lines, command.text, 12) : lines,
     state.recentDjLines
   );
   const conversation = commands.reduce(
-    (messages, command) => command.type === "SPEAK"
+    (messages, command) => command.type === "PREPARE_SPEECH"
       ? append(messages, { role: "dj" as const, text: command.text, at: event.at }, 24)
       : messages,
     state.conversation
@@ -268,7 +375,7 @@ function pipelineMatches(state: StationState): boolean {
 }
 
 function canHandoff(state: StationState): boolean {
-  return state.nextTrack.status === "ready" && Boolean(state.nextTrack.trackId) && !state.dj.speaking && !state.dj.pending &&
+  return state.nextTrack.status === "ready" && Boolean(state.nextTrack.trackId) && !state.dj.speaking && !state.dj.pending && !state.dj.prepared && !state.carts.playingId &&
     state.transition.status === "audible" && state.transition.minimumPlayed === true && pipelineMatches(state);
 }
 
@@ -381,7 +488,7 @@ function userCommittedTransition(state: StationState): boolean {
   );
 }
 
-function scheduleDueHorizon(state: StationState): Reduction {
+function scheduleDueHorizon(state: StationState, at: number): Reduction {
   const requestId = state.horizonRequestId;
   if (!requestId || state.horizonFiredForTrackId !== state.playback.trackId) return { state, commands: [] };
   if (state.pendingUser && !state.pendingUser.applied) return { state, commands: [] };
@@ -402,66 +509,98 @@ function scheduleDueHorizon(state: StationState): Reduction {
     };
   }
 
+  const autonomy = autonomyAt(state, at);
+  const planningState = { ...state, autonomy };
   return {
     state: {
-      ...state,
+      ...planningState,
       horizonRequestId: undefined,
       continuityPlanRequestId: requestId,
       phase: "generating_next",
       nextTrack: { status: "planning", revision: state.intentRevision, bufferedMs: 0, generatedMs: 0 }
     },
-    commands: [{ type: "PLAN_CONTINUITY", input: continuityInput(state, requestId) }]
+    commands: [{ type: "PLAN_CONTINUITY", input: continuityInput(planningState, requestId, at) }]
   };
 }
 
-type CueDecision = "wait" | "drop" | "speak";
+type CueDecision = "wait" | "drop" | "play";
 
 function cueTalkativenessThreshold(purpose: OnAirCuePurpose): number {
   if (purpose === "opening" || purpose === "listener_acknowledgement") return 0.15;
   if (purpose === "back_announce") return 0.35;
-  if (purpose === "tease") return 0.45;
+  if (purpose === "handoff_setup") return 0.45;
   return 0.7;
 }
 
-function evaluateCueWindow(state: StationState): CueDecision {
-  const cue = state.dj.pending;
-  if (!cue) return "wait";
+function rememberLink(showState: ShowState, fingerprint: string): ShowState {
+  return { ...showState, recentLinkFingerprints: appendUnique(showState.recentLinkFingerprints, [fingerprint], 8) };
+}
+
+function preparedSpeechDecision(state: StationState, at: number): CueDecision {
+  const cue = state.dj.prepared;
+  if (!cue || cue.status !== "ready" || cue.durationMs === undefined) return "wait";
   const remainingMs = state.playback.remainingMs ?? Infinity;
-  const playbackBuffered = state.playback.trackId !== null && state.playback.bufferedMs >= SPEECH_BUFFER_GUARD_MS;
-  const transitionBuffered = state.transition.status === "audible" && state.transition.bufferedMs >= SPEECH_BUFFER_GUARD_MS;
+  const neededMs = cue.durationMs + SPEECH_BUFFER_GUARD_MS;
+  const playbackBuffered = state.playback.trackId !== null && state.playback.bufferedMs >= neededMs;
+  const transitionBuffered = state.transition.status === "audible" && state.transition.bufferedMs >= neededMs;
+  const waitedMs = Math.max(0, at - (cue.readyAt ?? at));
+
+  if (cue.revision !== state.intentRevision) return "drop";
+  const subjectIsCurrent = !cue.trackId || cue.trackId === state.nextTrack.trackId || cue.trackId === state.playback.trackId;
+  if (!subjectIsCurrent) return "drop";
 
   if (cue.purpose === "opening") {
     if (!state.playback.trackId) return "wait";
-    if (state.playback.playheadMs > 30_000) return "drop";
-    return playbackBuffered ? "speak" : "wait";
+    const window = state.playback.presentationMap?.safeMicWindows.find((candidate) => candidate.kind === "intro");
+    if (!window) return state.playback.playheadMs > 30_000 ? "drop" : "wait";
+    const latestStart = window.endMs - cue.durationMs - SPEECH_WINDOW_TAIL_MS;
+    if (state.playback.playheadMs > latestStart + SPEECH_WINDOW_LEAD_MS) return "drop";
+    const target = Math.max(window.startMs, latestStart);
+    return playbackBuffered && state.playback.playheadMs + SPEECH_WINDOW_LEAD_MS >= target ? "play" : "wait";
   }
 
   if (cue.purpose === "listener_acknowledgement") {
     const resolution = state.pendingUser?.resolution;
-    if (!resolution) return "drop";
     if (resolution === "immediate" || resolution === "next") {
       if (state.transition.status === "failed" || remainingMs <= 0) return "drop";
-      return transitionBuffered ? "speak" : "wait";
+      return transitionBuffered ? "play" : waitedMs >= MAX_PREPARED_SPEECH_WAIT_MS ? "drop" : "wait";
     }
-    return state.transition.status === "none" && playbackBuffered ? "speak" : "wait";
+    if (state.transition.status !== "none") return waitedMs >= MAX_PREPARED_SPEECH_WAIT_MS ? "drop" : "wait";
   }
 
-  if (cue.purpose === "back_announce" || cue.purpose === "tease") {
+  if (cue.purpose === "back_announce" || cue.purpose === "handoff_setup") {
     if (state.nextTrack.status === "none" || state.nextTrack.status === "failed") return "drop";
     if (state.nextTrack.status !== "ready") return "wait";
-    if (transitionBuffered || remainingMs <= HANDOFF_CUE_WINDOW_MS) return playbackBuffered || transitionBuffered ? "speak" : "wait";
-    return "wait";
+    if (transitionBuffered) return "play";
   }
 
-  if (state.phase !== "playing" || state.transition.status !== "none") return "drop";
-  if (state.playback.playheadMs < MID_TRACK_CUE_EDGE_MS) return "wait";
-  if (remainingMs <= MID_TRACK_CUE_EDGE_MS) return "drop";
-  return playbackBuffered ? "speak" : "wait";
+  const allowedKinds = cue.purpose === "back_announce" || cue.purpose === "handoff_setup" ? ["outro"]
+    : cue.purpose === "mid_track_observation" ? ["instrumental", "vocal_gap"]
+    : ["intro", "instrumental", "vocal_gap", "outro"];
+  const window = state.playback.presentationMap?.safeMicWindows.find((candidate) => {
+    if (!allowedKinds.includes(candidate.kind)) return false;
+    const effectiveStart = cue.purpose === "mid_track_observation" ? Math.max(candidate.startMs, MID_TRACK_CUE_EDGE_MS) : candidate.startMs;
+    const effectiveEnd = cue.purpose === "mid_track_observation"
+      ? Math.min(candidate.endMs, (state.playback.durationMs ?? candidate.endMs) - MID_TRACK_CUE_EDGE_MS)
+      : candidate.endMs;
+    const latestStart = effectiveEnd - cue.durationMs! - SPEECH_WINDOW_TAIL_MS;
+    if (latestStart < effectiveStart) return false;
+    return state.playback.playheadMs <= latestStart + SPEECH_WINDOW_LEAD_MS;
+  });
+  if (!window) return waitedMs >= MAX_PREPARED_SPEECH_WAIT_MS || remainingMs <= cue.durationMs + SPEECH_WINDOW_TAIL_MS ? "drop" : "wait";
+  const effectiveStart = cue.purpose === "mid_track_observation" ? Math.max(window.startMs, MID_TRACK_CUE_EDGE_MS) : window.startMs;
+  const effectiveEnd = cue.purpose === "mid_track_observation"
+    ? Math.min(window.endMs, (state.playback.durationMs ?? window.endMs) - MID_TRACK_CUE_EDGE_MS)
+    : window.endMs;
+  const target = cue.purpose === "back_announce" || cue.purpose === "handoff_setup"
+    ? Math.max(effectiveStart, effectiveEnd - cue.durationMs - SPEECH_WINDOW_TAIL_MS)
+    : effectiveStart;
+  return playbackBuffered && state.playback.playheadMs + SPEECH_WINDOW_LEAD_MS >= target ? "play" : "wait";
 }
 
-function advanceCue(state: StationState, at: number): Reduction | null {
+function prepareCue(state: StationState, at: number): Reduction | null {
   const cue = state.dj.pending;
-  if (!cue || state.dj.speaking) return null;
+  if (!cue || state.dj.speaking || state.dj.prepared) return null;
   const subjectIsCurrent = !cue.trackId || cue.trackId === state.nextTrack.trackId || cue.trackId === state.playback.trackId;
   if (cue.revision !== state.intentRevision || !subjectIsCurrent) {
     return { state: { ...state, dj: { ...state.dj, pending: undefined } }, commands: [] };
@@ -471,6 +610,7 @@ function advanceCue(state: StationState, at: number): Reduction | null {
       state: {
         ...state,
         dj: { ...state.dj, pending: undefined },
+        showState: rememberLink(state.showState, cue.linkFingerprint ?? `${cue.purpose}: direct concise link`),
         recentDjLines: append(state.recentDjLines, cue.text, 12),
         conversation: append(state.conversation, { role: "dj", text: cue.text, at }, 24)
       },
@@ -486,9 +626,29 @@ function advanceCue(state: StationState, at: number): Reduction | null {
     return { state: { ...state, dj: { ...state.dj, pending: undefined } }, commands: [] };
   }
 
-  const window = evaluateCueWindow(state);
-  if (window === "wait") return null;
-  if (window === "drop") return { state: { ...state, dj: { ...state.dj, pending: undefined } }, commands: [] };
+  return {
+    state: {
+      ...state,
+      showState: rememberLink(state.showState, cue.linkFingerprint ?? `${cue.purpose}: direct concise link`),
+      dj: {
+        ...state.dj,
+        pending: undefined,
+        prepared: { ...cue, linkFingerprint: cue.linkFingerprint ?? `${cue.purpose}: direct concise link`, status: "preparing" }
+      }
+    },
+    commands: [{ type: "PREPARE_SPEECH", speechId: cue.speechId, text: cue.text }]
+  };
+}
+
+function advancePreparedSpeech(state: StationState, at: number): Reduction | null {
+  const prepared = state.dj.prepared;
+  if (!prepared || prepared.status !== "ready" || state.dj.speaking) return null;
+  const decision = preparedSpeechDecision(state, at);
+  if (decision === "wait") return null;
+  if (decision === "drop") {
+    return { state: { ...state, dj: { ...state.dj, prepared: undefined } }, commands: [{ type: "CANCEL_SPEECH", speechId: prepared.speechId }] };
+  }
+  const cadence = state.showState.speechCadence;
   return {
     state: {
       ...state,
@@ -497,13 +657,47 @@ function advanceCue(state: StationState, at: number): Reduction | null {
         speechCadence: {
           ...cadence,
           lastCueAt: at,
-          lastCuePurpose: cue.purpose,
+          lastCuePurpose: prepared.purpose,
           cuesSpoken: cadence.cuesSpoken + 1
         }
       },
-      dj: { ...state.dj, speaking: true, speechId: cue.speechId, pending: undefined }
+      dj: {
+        ...state.dj,
+        speaking: true,
+        speechId: prepared.speechId,
+        prepared: { ...prepared, status: "playing" }
+      }
     },
-    commands: [{ type: "SPEAK", speechId: cue.speechId, text: cue.text }]
+    commands: [{ type: "PLAY_SPEECH", speechId: prepared.speechId }]
+  };
+}
+
+function advanceCart(state: StationState, at: number): Reduction | null {
+  if (state.dj.muted || state.autonomy.mode === "interactive" || state.carts.playingId || state.dj.pending || state.dj.prepared || state.dj.speaking) return null;
+  const cart = state.carts.entries.find((entry) =>
+    entry.status === "ready" &&
+    entry.kind === "id" &&
+    entry.mixType === "dry" &&
+    (entry.lastUsedAt === undefined || at - entry.lastUsedAt >= CART_REPEAT_COOLDOWN_MS)
+  );
+  if (!cart || state.playback.trackId === null || state.playback.bufferedMs < cart.durationMs + SPEECH_BUFFER_GUARD_MS) return null;
+  const playheadMs = state.playback.playheadMs;
+  const window = state.playback.presentationMap?.safeMicWindows.find((candidate) => {
+    if (!cart.allowedPlacements.includes("over_music") || !["intro", "instrumental", "vocal_gap"].includes(candidate.kind)) return false;
+    return playheadMs >= candidate.startMs && playheadMs + cart.durationMs + SPEECH_WINDOW_TAIL_MS <= candidate.endMs;
+  });
+  if (!window) return null;
+  return {
+    state: {
+      ...state,
+      carts: {
+        entries: state.carts.entries.map((entry) => entry.id === cart.id
+          ? { ...entry, useCount: entry.useCount + 1, lastUsedAt: at }
+          : entry),
+        playingId: cart.id
+      }
+    },
+    commands: [{ type: "PLAY_CART", cartId: cart.id }]
   };
 }
 
@@ -542,8 +736,14 @@ function advanceProgramme(state: StationState, at: number): Reduction {
     return { state: { ...state, phase: "error", error: "Playback ended before another playable stream was ready." }, commands: [] };
   }
 
-  const cue = advanceCue(state, at);
+  const preparedSpeech = advancePreparedSpeech(state, at);
+  if (preparedSpeech) return preparedSpeech;
+
+  const cue = prepareCue(state, at);
   if (cue) return cue;
+
+  const cart = advanceCart(state, at);
+  if (cart) return cart;
 
   if (canHandoff(state)) return handoff(state);
 
@@ -573,7 +773,7 @@ function advanceProgramme(state: StationState, at: number): Reduction {
     };
   }
 
-  return scheduleDueHorizon(state);
+  return scheduleDueHorizon(state, at);
 }
 
 export function reduce(state: StationState, event: StationEvent): Reduction {
@@ -588,6 +788,7 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
         running: true,
         intentRevision: 1,
         startup: { requestId: event.sessionId, message: event.message, status: "planning" },
+        autonomy: { lastListenerAt: event.at, tracksSinceListener: 0, mode: "interactive" },
         recentUserMessages: [event.message],
         conversation: [{ role: "listener", text: event.message, at: event.at }]
       };
@@ -599,23 +800,46 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
       commands = [{ type: "STOP_ALL" }];
       break;
     case "SET_DJ_MUTED": {
-      const speechId = state.dj.speechId;
+      const speechId = state.dj.speechId ?? state.dj.prepared?.speechId;
+      const deferredIds = !event.muted && state.running
+        ? new Set(state.carts.entries.filter((entry) => entry.status === "registered" && entry.kind === "id").map((entry) => entry.id))
+        : new Set<string>();
       next = {
         ...state,
         dj: {
           ...state.dj,
           muted: event.muted,
           speaking: event.muted ? false : state.dj.speaking,
-          speechId: event.muted ? undefined : state.dj.speechId
-        }
+          speechId: event.muted ? undefined : state.dj.speechId,
+          prepared: event.muted ? undefined : state.dj.prepared
+        },
+        carts: deferredIds.size ? {
+          ...state.carts,
+          entries: state.carts.entries.map((entry) => deferredIds.has(entry.id) ? { ...entry, status: "generating" } : entry)
+        } : state.carts
       };
       if (event.muted && speechId) commands = [{ type: "CANCEL_SPEECH", speechId }];
+      if (!event.muted && deferredIds.size) {
+        commands = state.carts.entries.filter((entry) => deferredIds.has(entry.id)).map((entry) => ({
+          type: "GENERATE_CART" as const,
+          spec: {
+            id: entry.id,
+            kind: entry.kind,
+            mixType: entry.mixType,
+            title: entry.title,
+            durationMs: entry.durationMs,
+            allowedPlacements: entry.allowedPlacements,
+            track: entry.track
+          }
+        }));
+      }
       break;
     }
     case "INITIAL_INTENT_RECEIVED": {
       if (state.startup?.requestId !== event.requestId) break;
       const direction = event.plan.musicalDirection;
       const spec = compileTrackSpec(`${event.requestId}-opening`, state.intentRevision, planDirective(event.plan), direction.intent, event.requestId);
+      const stationElements = compileStationElements(event.requestId, state.intentRevision, state.showState.presenter.name);
       next = {
         ...state,
         phase: "generating_next",
@@ -628,6 +852,9 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
         ),
         dj: { ...state.dj, pending: plannedCue(event.plan, `cue-${event.requestId}`, state.intentRevision, spec.id) },
         startup: { ...state.startup, status: "generating" },
+        carts: {
+          entries: stationElements.map((element) => ({ ...element, status: "registered", useCount: 0 }))
+        },
         nextTrack: { status: "generating", trackId: spec.id, revision: spec.revision, spec, bufferedMs: 0, generatedMs: 0 }
       };
       commands = [{ type: "GENERATE_TRACK", spec }];
@@ -646,6 +873,7 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
         continuityPlanRequestId: interruptedHorizonPlan ? undefined : state.continuityPlanRequestId,
         horizonRequestId: interruptedHorizonPlan ? state.continuityPlanRequestId : state.horizonRequestId,
         dj: { ...state.dj, pending: undefined },
+        autonomy: { lastListenerAt: event.at, tracksSinceListener: 0, mode: "interactive" },
         pendingUser: { requestId: event.requestId, revision, message: event.message, applied: false },
         recentUserMessages: append(state.recentUserMessages, event.message, 12),
         conversation: append(state.conversation, { role: "listener", text: event.message, at: event.at }, 24)
@@ -719,7 +947,16 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
       if (eventMatchesNext(state, event.trackId, event.revision) && state.nextTrack.spec) next = { ...state, nextTrack: { ...state.nextTrack, spec: { ...state.nextTrack.spec, durationMs: event.durationMs } } };
       break;
     case "TRACK_LYRIC_TIMESTAMPS_RECEIVED":
-      if (state.playback.trackId === event.trackId) next = { ...state, playback: { ...state.playback, wordTimestamps: event.wordTimestamps } };
+      if (state.playback.trackId === event.trackId && state.playback.durationMs !== null) {
+        next = {
+          ...state,
+          playback: {
+            ...state.playback,
+            wordTimestamps: event.wordTimestamps,
+            presentationMap: buildTrackPresentationMap(event.trackId, state.playback.durationMs, state.playback.sections, event.wordTimestamps)
+          }
+        };
+      }
       break;
     case "TRACK_READY": {
       if (!eventMatchesNext(state, event.trackId, event.revision)) break;
@@ -791,16 +1028,66 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
         } else next = { ...state, phase: "error", error: "The transition ended before replacement music was ready." };
       }
       break;
+    case "TTS_PREPARED":
+      if (state.dj.muted || state.dj.prepared?.speechId !== event.speechId || state.dj.prepared.status !== "preparing") break;
+      next = { ...state, dj: { ...state.dj, prepared: { ...state.dj.prepared, status: "ready", durationMs: event.durationMs, readyAt: event.at } } };
+      break;
+    case "TTS_PREPARATION_FAILED":
+      if (state.dj.prepared?.speechId !== event.speechId) break;
+      next = { ...state, dj: { ...state.dj, prepared: undefined, speaking: false, speechId: undefined } };
+      break;
     case "TTS_STARTED":
       if (state.dj.muted || state.dj.speechId !== event.speechId) break;
       next = { ...state, dj: { ...state.dj, speaking: true, speechId: event.speechId } };
       break;
     case "TTS_FINISHED":
       if (state.dj.speechId !== event.speechId) break;
-      next = { ...state, dj: { ...state.dj, speaking: false, speechId: undefined } };
+      next = { ...state, dj: { ...state.dj, speaking: false, speechId: undefined, prepared: undefined } };
+      break;
+    case "CART_READY":
+      next = {
+        ...state,
+        carts: {
+          ...state.carts,
+          entries: state.carts.entries.map((entry) => entry.id === event.cartId ? { ...entry, status: "ready", error: undefined } : entry)
+        }
+      };
+      break;
+    case "CART_GENERATION_FAILED":
+      next = {
+        ...state,
+        carts: {
+          ...state.carts,
+          entries: state.carts.entries.map((entry) => entry.id === event.cartId ? { ...entry, status: "failed", error: event.error } : entry)
+        }
+      };
+      break;
+    case "CART_STARTED":
+      if (state.carts.playingId !== event.cartId) break;
+      next = state;
+      break;
+    case "CART_FINISHED":
+      if (state.carts.playingId !== event.cartId) break;
+      next = { ...state, carts: { ...state.carts, playingId: undefined } };
       break;
     case "TRACK_STARTED": {
       if (state.nextTrack.trackId !== event.trackId) break;
+      const cartsToGenerate = state.carts.entries.filter((entry) => entry.status === "registered" && !(state.dj.muted && entry.kind === "id"));
+      const cartIdsToGenerate = new Set(cartsToGenerate.map((entry) => entry.id));
+      if (cartsToGenerate.length) {
+        commands = cartsToGenerate.map((entry) => ({
+          type: "GENERATE_CART" as const,
+          spec: {
+            id: entry.id,
+            kind: entry.kind,
+            mixType: entry.mixType,
+            title: entry.title,
+            durationMs: entry.durationMs,
+            allowedPlacements: entry.allowedPlacements,
+            track: entry.track
+          }
+        }));
+      }
       if (state.playback.trackId && state.playback.title) {
         next = { ...state, recentTracks: append(state.recentTracks, { trackId: state.playback.trackId, title: state.playback.title, description: state.playback.styleSummary ?? "", bpm: state.playback.bpm, key: state.playback.key, energy: state.playback.energy }, 12) };
       }
@@ -811,6 +1098,8 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
           trackId: event.trackId, title: event.spec.title, playheadMs: 0, durationMs: event.spec.durationMs, remainingMs: event.spec.durationMs,
           bpm: event.spec.bpm, key: event.spec.key, styleSummary: event.spec.description, energy: event.spec.energy,
           styles: event.spec.styles, mood: event.spec.mood, vocals: event.spec.vocals, sections: event.spec.sections,
+          editorialNotes: event.spec.editorialNotes,
+          presentationMap: buildTrackPresentationMap(event.trackId, event.spec.durationMs, event.spec.sections),
           bufferedMs: state.nextTrack.bufferedMs
         },
         nextTrack: emptyNext(),
@@ -820,6 +1109,14 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
         continuityPlanRequestId: undefined,
         startup: undefined,
         pendingUser: state.pendingUser?.applied ? undefined : state.pendingUser,
+        autonomy: {
+          ...state.autonomy,
+          tracksSinceListener: state.startup || state.pendingUser?.applied ? 0 : state.autonomy.tracksSinceListener + (state.playback.trackId ? 1 : 0)
+        },
+        carts: {
+          ...state.carts,
+          entries: state.carts.entries.map((entry) => cartIdsToGenerate.has(entry.id) ? { ...entry, status: "generating" } : entry)
+        },
         error: undefined
       };
       break;

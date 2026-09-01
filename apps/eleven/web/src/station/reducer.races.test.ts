@@ -276,7 +276,7 @@ describe("station reducer race safety", () => {
 
   it("ignores late audio and discards the cue from a cancelled horizon programme", () => {
     const horizonWithCue = makeProducerPlan(currentIntent, horizonTrack, {
-      onAirCue: { text: "Here is the track you cancelled.", purpose: "tease" },
+      onAirCue: { text: "Here is the track you cancelled.", purpose: "handoff_setup" },
       suggestedTiming: "continuity"
     });
     const horizonStarted = reduce(playingState(), horizon);
@@ -313,6 +313,7 @@ describe("station reducer race safety", () => {
     state = reduce(state, event({
       type: "TRANSITION_BUFFER_UPDATED", transitionId, revision, bufferedMs: 12_000, generatedMs: 12_000, generationRate: 4
     })).state;
+    state = reduce(state, event({ type: "TTS_PREPARED", speechId: "cue-user-close", durationMs: 2_000 })).state;
     state = reduce(state, event({ type: "TRANSITION_READY", transitionId, revision })).state;
     state = reduce(state, event({ type: "TRANSITION_STARTED", transitionId, revision })).state;
     state = reduce(state, event({ type: "TRACK_READY", trackId, revision })).state;

@@ -12,6 +12,7 @@ describe("MockLLMProvider visual test data", () => {
         listener: { preferences: [], dislikes: [], callbacks: [], notablePhrases: [] },
         musicalThesis: { current: "Test", intendedTrajectory: [] },
         recentProductionFingerprints: [],
+        recentLinkFingerprints: [],
         speechCadence: { lastCueAt: null, cooldownMs: 45_000, sessionTalkativeness: 0.5, cuesSpoken: 0 }
       }
     });

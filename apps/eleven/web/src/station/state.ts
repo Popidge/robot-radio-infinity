@@ -28,6 +28,7 @@ export const DEFAULT_SHOW_STATE: ShowState = {
     intendedTrajectory: ["Establish the requested world clearly, then develop it without repeating the same production move."]
   },
   recentProductionFingerprints: [],
+  recentLinkFingerprints: [],
   speechCadence: {
     lastCueAt: null,
     cooldownMs: 45_000,
@@ -47,6 +48,8 @@ export function createInitialState(djMuted = false): StationState {
     nextTrack: { status: "none", bufferedMs: 0, generatedMs: 0 },
     transition: { status: "none", bufferedMs: 0, generatedMs: 0 },
     dj: { muted: djMuted, speaking: false },
+    carts: { entries: [] },
+    autonomy: { lastListenerAt: null, tracksSinceListener: 0, mode: "interactive" },
     recentEvents: [],
     recentCommands: [],
     recentTracks: [],

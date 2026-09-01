@@ -45,6 +45,10 @@ function isInstrumental(spec: TrackSpec): boolean {
   return !vocals || /instrumental|no vocals/i.test(vocals);
 }
 
+function isDryStationId(spec: TrackSpec): boolean {
+  return spec.styles.some((style) => /dry station id|dry spoken ident/i.test(style));
+}
+
 function chunkText(spec: TrackSpec, section: TrackSection): string {
   const heading = `[${section.name}]`;
   if (isInstrumental(spec)) return `${heading}\n{instrumental, no vocals}`;
@@ -54,6 +58,7 @@ function chunkText(spec: TrackSpec, section: TrackSection): string {
 
 function vocalStyles(spec: TrackSpec): string[] {
   if (isInstrumental(spec)) return ["instrumental", "no lead vocals", "no backing vocals", "no spoken words"];
+  if (isDryStationId(spec)) return ["isolated dry spoken station ident", `professional radio voice: ${spec.vocals}`, "no singing", "no music or effects"];
   return [
     `original vocals: ${spec.vocals}`,
     `vocal language: ${spec.language ?? "appropriate to the musical direction"}`
@@ -61,6 +66,7 @@ function vocalStyles(spec: TrackSpec): string[] {
 }
 
 function negativeStyles(spec: TrackSpec): string[] {
+  if (isDryStationId(spec)) return ["music", "melody", "singing", "drums", "bass", "synthesizer", "reverb", "delay", "ambience", "sound effects", "long silence"];
   return [
     ...(isInstrumental(spec) ? ["lead vocals", "backing vocals", "spoken words"] : ["spoken-word narration"]),
     "long silence",

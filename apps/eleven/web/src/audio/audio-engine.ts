@@ -1,6 +1,6 @@
 import pcmPlayerWorkletCode from "./pcm-player.worklet.ts?raw";
 
-type SourceKind = "track" | "transition" | "tts";
+type SourceKind = "track" | "transition" | "tts" | "cart";
 
 interface SourceMetrics {
   type: "metrics";
@@ -39,11 +39,14 @@ export class AudioEngine {
   private incomingTrackBus: GainNode | null = null;
   private transitionBus: GainNode | null = null;
   private ttsBus: GainNode | null = null;
+  private cartBus: GainNode | null = null;
   private analyser: AnalyserNode | null = null;
   private currentTrack: PcmSource | null = null;
   private incomingTracks = new Map<string, PcmSource>();
   private transition: PcmSource | null = null;
   private ttsSources = new Map<string, PcmSource>();
+  private cartLibrary = new Map<string, { chunks: Float32Array[]; durationMs: number; mixType: "dry" | "wet" }>();
+  private currentCart: PcmSource | null = null;
   private trackStartedAt = 0;
 
   async initialize(): Promise<void> {
@@ -66,6 +69,7 @@ export class AudioEngine {
     this.incomingTrackBus = this.context.createGain();
     this.transitionBus = this.context.createGain();
     this.ttsBus = this.context.createGain();
+    this.cartBus = this.context.createGain();
     this.analyser = this.context.createAnalyser();
     this.analyser.fftSize = 256;
     this.analyser.smoothingTimeConstant = 0.82;
@@ -81,6 +85,7 @@ export class AudioEngine {
     this.transitionBus.connect(this.musicBus);
     this.musicBus.connect(this.masterBus);
     this.ttsBus.connect(this.masterBus);
+    this.cartBus.connect(this.masterBus);
     this.masterBus.connect(this.analyser);
     this.analyser.connect(compressor);
     compressor.connect(this.context.destination);
@@ -98,7 +103,7 @@ export class AudioEngine {
     const gain = this.context.createGain();
     gain.gain.value = 0;
     node.connect(gain);
-    const bus = kind === "transition" ? this.transitionBus : kind === "tts" ? this.ttsBus : this.incomingTrackBus;
+    const bus = kind === "transition" ? this.transitionBus : kind === "tts" ? this.ttsBus : kind === "cart" ? this.cartBus : this.incomingTrackBus;
     if (!bus) throw new Error("Audio bus is not initialized");
     gain.connect(bus);
     const source: PcmSource = {
@@ -189,6 +194,43 @@ export class AudioEngine {
   finishTTS(id: string): void {
     const source = this.ttsSources.get(id);
     if (source) this.dispose(source);
+  }
+
+  registerCart(id: string, chunks: Float32Array[], durationMs: number, mixType: "dry" | "wet"): void {
+    this.cartLibrary.set(id, { chunks: chunks.map((chunk) => chunk.slice()), durationMs, mixType });
+  }
+
+  playCart(id: string, onEnded: () => void): void {
+    const asset = this.cartLibrary.get(id);
+    if (!asset || this.currentCart) throw new Error(`Station element is not ready for ${id}`);
+    const source = this.makeSource(id, "cart", asset.durationMs, () => {
+      this.restoreAfterCart();
+      if (this.currentCart === source) this.currentCart = null;
+      this.dispose(source);
+      onEnded();
+    });
+    this.currentCart = source;
+    source.playing = true;
+    source.gain.gain.setValueAtTime(asset.mixType === "dry" ? 0.94 : 0.88, this.now());
+    this.duckForCart(asset.mixType);
+    for (const chunk of asset.chunks) this.enqueueCart(source, chunk.slice());
+    source.node.port.postMessage({ type: "end" });
+    source.node.port.postMessage({ type: "play" });
+  }
+
+  private enqueueCart(source: PcmSource, pcm: Float32Array): void {
+    source.receivedFrames += pcm.length / 2;
+    source.node.port.postMessage({ type: "chunk", pcm }, [pcm.buffer]);
+  }
+
+  private duckForCart(mixType: "dry" | "wet"): void {
+    if (!this.musicBus) return;
+    this.ramp(this.musicBus.gain, mixType === "dry" ? 0.5 : 0.16, 120);
+  }
+
+  private restoreAfterCart(): void {
+    if (!this.musicBus) return;
+    this.ramp(this.musicBus.gain, 1, 280);
   }
 
   private startTransition(): void {
@@ -299,12 +341,15 @@ export class AudioEngine {
   async stopAll(): Promise<void> {
     for (const source of this.incomingTracks.values()) this.dispose(source);
     for (const source of this.ttsSources.values()) this.dispose(source);
+    if (this.currentCart) this.dispose(this.currentCart);
     if (this.currentTrack) this.dispose(this.currentTrack);
     if (this.transition) this.dispose(this.transition);
     this.incomingTracks.clear();
     this.ttsSources.clear();
+    this.cartLibrary.clear();
     this.currentTrack = null;
     this.transition = null;
+    this.currentCart = null;
     this.analyser = null;
     const context = this.context;
     this.context = null;
@@ -314,6 +359,7 @@ export class AudioEngine {
   private findSource(id: string): PcmSource | undefined {
     if (this.currentTrack?.id === id) return this.currentTrack;
     if (this.transition?.id === id) return this.transition;
+    if (this.currentCart?.id === id) return this.currentCart;
     return this.incomingTracks.get(id) ?? this.ttsSources.get(id);
   }
 
