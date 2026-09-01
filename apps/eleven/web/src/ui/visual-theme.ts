@@ -46,7 +46,7 @@ export function createVisualTheme(playback: PlaybackState, intent: MusicalIntent
     secondary: printColour((baseHue + 132) % 360, energy, 1),
     accent: printColour((baseHue + 54) % 360, energy, 5),
     waveOpacity: 0.42 + energy * 0.43,
-    lyricOpacity: 0.2 + energy * 0.24,
+    lyricOpacity: 0.32 + energy * 0.3,
     energy
   };
 }

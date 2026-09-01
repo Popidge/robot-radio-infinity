@@ -1,6 +1,10 @@
 import type { StationState } from "@robot-radio/eleven-shared";
 
-interface RobotDjProps { state: StationState }
+interface RobotDjProps {
+  state: StationState;
+  controlsOpen: boolean;
+  onToggleControls(): void;
+}
 
 function robotMode(state: StationState): "idle" | "thinking" | "listening" | "speaking" | "live" {
   if (!state.running) return "idle";
@@ -10,10 +14,17 @@ function robotMode(state: StationState): "idle" | "thinking" | "listening" | "sp
   return "live";
 }
 
-export function RobotDj({ state }: RobotDjProps) {
+export function RobotDj({ state, controlsOpen, onToggleControls }: RobotDjProps) {
   const mode = robotMode(state);
   return (
-    <div className={`dj-avatar-panel is-${mode}`} aria-label={`DJ is ${mode}`}>
+    <button
+      type="button"
+      className={`dj-avatar-panel is-${mode} ${state.running ? "has-controls" : ""}`}
+      aria-label={state.running ? `DJ is ${mode}. ${controlsOpen ? "Hide" : "Show"} controls` : `DJ is ${mode}`}
+      aria-expanded={state.running ? controlsOpen : undefined}
+      aria-controls={state.running ? "control-plane" : undefined}
+      onClick={state.running ? onToggleControls : undefined}
+    >
       <svg viewBox="0 0 260 220" role="img" aria-hidden="true">
         <path className="dj-aerial" d="M119 45V15" />
         <circle className="dj-aerial-tip" cx="119" cy="12" r="9" />
@@ -42,6 +53,6 @@ export function RobotDj({ state }: RobotDjProps) {
           <rect x="245" y="170" width="11" height="36" />
         </g>
       </svg>
-    </div>
+    </button>
   );
 }

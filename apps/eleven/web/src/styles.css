@@ -73,11 +73,9 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 4px 
 .lyric-layer p {
   width: min(1120px, 108vw);
   margin: 0;
-  color: var(--lyric-colour);
+  color: #fff;
   font: 900 clamp(5.5rem, 14vw, 14rem)/0.72 "Barlow Condensed", sans-serif;
   letter-spacing: -0.025em;
-  -webkit-text-stroke: 3px rgba(255, 255, 255, 0.96);
-  paint-order: stroke fill;
   text-align: center;
   text-transform: uppercase;
   mix-blend-mode: difference;
@@ -136,28 +134,76 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 4px 
   left: 50%;
   width: fit-content;
   max-width: min(800px, calc(100vw - 310px));
-  max-height: min(53svh, 470px);
-  overflow: hidden;
-  padding: clamp(18px, 2.2vw, 34px) clamp(22px, 3vw, 44px);
+  padding: clamp(22px, 2.2vw, 34px) clamp(26px, 3vw, 44px) clamp(40px, 3vw, 52px);
   transform: translate(-50%, -50%);
+  transition: top 320ms ease, right 320ms ease, max-width 320ms ease, padding 320ms ease, transform 320ms ease;
 }
 .track-title-panel h1 {
+  padding-right: clamp(18px, 2.8vw, 44px);
   font-size: clamp(4.3rem, 10vw, 10rem);
   line-height: 0.72;
   overflow-wrap: normal;
   word-break: normal;
   text-wrap: balance;
 }
+.track-title-panel.is-forming h1 { font-size: clamp(4.1rem, 8.8vw, 8.8rem); }
+.track-title-panel.is-dense h1 { font-size: clamp(3.8rem, 8vw, 8rem); }
+.title-size-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-bottom: 3px solid var(--ink);
+  border-left: 3px solid var(--ink);
+  border-radius: 0;
+  background: var(--track-accent);
+  font: 500 1.45rem/1 "DM Mono", monospace;
+}
+.now-playing-tag {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  border-top: 3px solid var(--ink);
+  border-left: 3px solid var(--ink);
+  background: var(--track-primary);
+  padding: 7px 10px;
+  font: 700 0.58rem/1 "DM Mono", monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.track-title-panel.is-compact {
+  top: 24px;
+  right: 24px;
+  left: auto;
+  max-width: min(440px, calc(100vw - 380px));
+  padding: 50px 26px 38px;
+  transform: none;
+  box-shadow: 6px 6px 0 var(--ink);
+}
+.track-title-panel.is-compact h1,
+.track-title-panel.is-compact.is-forming h1,
+.track-title-panel.is-compact.is-dense h1 {
+  padding-right: 12px;
+  font-size: clamp(2.6rem, 4.8vw, 4.8rem);
+  line-height: 0.78;
+}
 
 .control-stack {
   position: absolute;
   z-index: 12;
-  left: 50%;
-  bottom: 30px;
+  left: 244px;
+  bottom: 24px;
   width: clamp(420px, 42vw, 680px);
-  transform: translateX(-50%);
   box-shadow: 6px 6px 0 var(--ink);
+  transform-origin: left bottom;
+  transition: opacity 180ms ease, transform 180ms ease, visibility 180ms;
 }
+.control-stack.is-hidden { visibility: hidden; opacity: 0; transform: translateX(-12px) scale(0.985); pointer-events: none; }
+.control-stack.is-visible { visibility: visible; opacity: 1; transform: none; }
 .transport-panel {
   display: grid;
   grid-template-columns: 52px auto minmax(100px, 1fr) auto 52px;
@@ -187,10 +233,17 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 4px 
   width: 220px;
   height: 188px;
   overflow: hidden;
+  appearance: none;
   border: 3px solid var(--ink);
+  border-radius: 0;
   background: var(--track-accent);
+  color: inherit;
+  padding: 0;
   box-shadow: 8px 8px 0 var(--ink);
+  cursor: default;
+  text-align: initial;
 }
+.dj-avatar-panel.has-controls { cursor: pointer; }
 .dj-avatar-panel svg { width: 100%; height: 100%; overflow: visible; color: var(--ink); }
 .dj-headphones, .dj-aerial, .dj-sound-rays path {
   fill: none;
@@ -341,8 +394,9 @@ pre { max-height: 92px; overflow: auto; font: 300 8px/1.45 "DM Mono", monospace;
 @keyframes prompt-pulse { 50% { transform: translate(3px, -3px); } }
 
 @media (max-width: 900px) {
-  .track-title-panel { top: 43%; max-width: calc(100vw - 48px); max-height: 48svh; }
-  .control-stack { width: min(520px, calc(100vw - 240px)); min-width: 360px; }
+  .track-title-panel { top: 43%; max-width: calc(100vw - 48px); }
+  .track-title-panel.is-compact { top: 24px; right: 24px; max-width: min(420px, calc(100vw - 320px)); }
+  .control-stack { left: 189px; width: min(520px, calc(100vw - 213px)); min-width: 360px; }
   .dj-avatar-panel { width: 165px; height: 142px; }
 }
 
@@ -354,11 +408,20 @@ pre { max-height: 92px; overflow: auto; font: 300 8px/1.45 "DM Mono", monospace;
   .welcome-panel h1 { font-size: clamp(3.1rem, 17vw, 5.4rem); }
   .vibe-form { grid-template-columns: minmax(0, 1fr) 50px; }
   .vibe-form input { font-size: 0.72rem; }
-  .track-title-panel { top: 40%; width: fit-content; max-width: calc(100vw - 32px); max-height: 43svh; padding: 16px 18px; box-shadow: 5px 5px 0 var(--ink); }
-  .track-title-panel h1 { font-size: clamp(3.6rem, 18vw, 6.5rem); line-height: 0.73; }
+  .track-title-panel { top: 40%; width: fit-content; max-width: calc(100vw - 32px); padding: 18px 18px 40px; box-shadow: 5px 5px 0 var(--ink); }
+  .track-title-panel h1 { padding-right: 30px; font-size: clamp(3.6rem, 18vw, 6.5rem); line-height: 0.73; }
+  .track-title-panel.is-forming h1 { font-size: clamp(3.4rem, 16vw, 5.8rem); }
+  .track-title-panel.is-dense h1 { font-size: clamp(3.2rem, 15vw, 5.4rem); }
+  .track-title-panel.is-compact { top: 68px; right: 16px; left: auto; width: fit-content; max-width: calc(100vw - 32px); padding: 46px 18px 36px; transform: none; }
+  .track-title-panel.is-compact h1,
+  .track-title-panel.is-compact.is-forming h1,
+  .track-title-panel.is-compact.is-dense h1 { padding-right: 8px; font-size: clamp(2.35rem, 11vw, 3.8rem); }
+  .title-size-toggle { width: 38px; height: 38px; }
+  .now-playing-tag { padding: 6px 8px; font-size: 0.52rem; }
   .lyric-layer p { width: 112vw; font-size: clamp(5.5rem, 31vw, 9.5rem); }
   .dj-avatar-panel { left: 16px; bottom: 16px; width: 144px; height: 124px; box-shadow: 5px 5px 0 var(--ink); }
-  .control-stack { bottom: 158px; width: calc(100vw - 32px); min-width: 0; box-shadow: 5px 5px 0 var(--ink); }
+  .control-stack { left: 16px; bottom: 140px; width: calc(100vw - 32px); min-width: 0; box-shadow: 5px 5px 0 var(--ink); }
+  .control-stack.is-hidden { transform: translateY(12px) scale(0.985); }
   .chat-panel { height: min(300px, calc(100svh - 300px)); }
   .chat-peek { height: 40px; }
   .transport-panel { height: 52px; grid-template-columns: 48px auto minmax(56px, 1fr) auto 48px; }

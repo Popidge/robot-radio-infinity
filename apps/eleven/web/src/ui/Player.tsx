@@ -43,9 +43,13 @@ export function Player({ state, paused, onStart, onStop, onTogglePause, onMessag
   const [message, setMessage] = useState("");
   const [startingVibe, setStartingVibe] = useState("");
   const [chatOpen, setChatOpen] = useState(false);
+  const [controlsOpen, setControlsOpen] = useState(true);
+  const [titleCompact, setTitleCompact] = useState(false);
   const duration = state.playback.durationMs ?? 0;
   const progress = duration ? Math.min(100, (state.playback.playheadMs / duration) * 100) : 0;
   const latestMessage = state.conversation.at(-1);
+  const trackTitle = state.playback.title ?? "The opening signal is taking shape";
+  const titleDensity = state.playback.title === null ? "is-forming" : trackTitle.length > 46 ? "is-dense" : "";
   const theme = useMemo(
     () => createVisualTheme(state.playback, state.intent),
     [state.intent, state.playback.energy, state.playback.mood, state.playback.styles, state.playback.title]
@@ -110,11 +114,21 @@ export function Player({ state, paused, onStart, onStop, onTogglePause, onMessag
         </div>
       ) : (
         <>
-          <div className="track-title-panel comic-panel" aria-live="polite">
-            <h1>{state.playback.title ?? "The opening signal is taking shape"}</h1>
+          <div className={`track-title-panel comic-panel ${titleDensity} ${titleCompact ? "is-compact" : "is-featured"}`}>
+            <button
+              type="button"
+              className="title-size-toggle"
+              onClick={() => setTitleCompact((compact) => !compact)}
+              aria-label={titleCompact ? "Feature track title" : "Move track title to corner"}
+              aria-pressed={titleCompact}
+            >
+              {titleCompact ? "+" : "−"}
+            </button>
+            <h1 aria-live="polite">{trackTitle}</h1>
+            <span className="now-playing-tag">Now playing</span>
           </div>
 
-          <div className={`control-stack ${chatOpen ? "is-chat-open" : ""}`}>
+          <div id="control-plane" className={`control-stack ${chatOpen ? "is-chat-open" : ""} ${controlsOpen ? "is-visible" : "is-hidden"}`}>
             {chatOpen ? (
               <div className="chat-panel">
                 <button className="chat-close" onClick={() => setChatOpen(false)} aria-label="Collapse conversation">↓</button>
@@ -162,7 +176,7 @@ export function Player({ state, paused, onStart, onStop, onTogglePause, onMessag
         </>
       )}
 
-      <RobotDj state={state} />
+      <RobotDj state={state} controlsOpen={controlsOpen} onToggleControls={() => setControlsOpen((open) => !open)} />
 
       {state.error ? <div className="experience-error comic-panel">{listenerError(state)}</div> : null}
     </section>

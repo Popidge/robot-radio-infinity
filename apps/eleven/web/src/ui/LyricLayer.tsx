@@ -15,7 +15,6 @@ export function LyricLayer({ playback, theme }: LyricLayerProps) {
   );
   const cue = activeLyricCue(cues, playback.playheadMs);
   if (!cue) return null;
-  const colours = [theme.primary, theme.secondary, theme.accent];
   const lines = splitLyricForDisplay(cue.text);
   const radians = cue.rotationDeg * (Math.PI / 180);
   const travel = 22 + theme.energy * 18;
@@ -28,7 +27,6 @@ export function LyricLayer({ playback, theme }: LyricLayerProps) {
         key={`${cue.startMs}-${cue.text}`}
         style={{
           "--lyric-rotation": `${cue.rotationDeg}deg`,
-          "--lyric-colour": colours[cue.colourIndex] ?? theme.primary,
           "--lyric-opacity": theme.lyricOpacity,
           "--lyric-from-x": `${travelX * -0.5}px`,
           "--lyric-from-y": `${travelY * -0.5}px`,
