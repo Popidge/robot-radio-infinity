@@ -120,7 +120,7 @@ export class OpenAILLMProvider implements LLMProvider {
       name: "opening_producer_plan",
       schema: producerPlanSchema,
       effort: "low",
-      system: `${PRODUCER_POLICY} Turn the opening request into a durable MusicalIntent and one concrete original first track. Energy values are decimals from 0 to 1. ${MUSIC_POLICY} Set a useful 180000 ms duration and provide 3-7 composition sections whose durations approximately cover the track. Make the intro legible quickly and the outro transition-friendly. Use suggestedTiming opening. An optional cue must use purpose opening. Capture only durable listener details in memoryUpdates and provide a concise production fingerprint.`,
+      system: `${PRODUCER_POLICY} Turn the opening request into a durable MusicalIntent and one concrete original first track. Energy values are decimals from 0 to 1. ${MUSIC_POLICY} Set a useful 180000 ms duration and provide 3-7 composition sections whose durations approximately cover the track. When the track has vocals, write concise original lyrics in the relevant sections, with one singable line per newline. For instrumental sections, omit lyrics. Make the intro legible quickly and the outro transition-friendly. Use suggestedTiming opening. An optional cue must use purpose opening. Capture only durable listener details in memoryUpdates and provide a concise production fingerprint.`,
       input
     });
   }
@@ -141,7 +141,7 @@ export class OpenAILLMProvider implements LLMProvider {
       name: "listener_producer_plan",
       schema: producerPlanSchema,
       effort: "low",
-      system: `${PRODUCER_POLICY} Interpret the listener turn into the next durable musical direction and one complete original next track. Energy and sessionTalkativeness values are decimals from 0 to 1. ${MUSIC_POLICY} Preserve established preferences unless explicitly overridden; record new preferences, dislikes, useful callbacks, and notable listener phrasing in memoryUpdates. For conversation that requests no musical change, keep the current direction and use suggestedTiming conversation_only. Otherwise suggest future, next_track, or immediate without assuming it will be followed. Set a useful 180000 ms duration and provide a coherent 3-8 section composition plan. Acknowledgement cues use purpose listener_acknowledgement; other purposes must match their actual editorial job.`,
+      system: `${PRODUCER_POLICY} Interpret the listener turn into the next durable musical direction and one complete original next track. Energy and sessionTalkativeness values are decimals from 0 to 1. ${MUSIC_POLICY} Preserve established preferences unless explicitly overridden; record new preferences, dislikes, useful callbacks, and notable listener phrasing in memoryUpdates. For conversation that requests no musical change, keep the current direction and use suggestedTiming conversation_only. Otherwise suggest future, next_track, or immediate without assuming it will be followed. Set a useful 180000 ms duration and provide a coherent 3-8 section composition plan. When the track has vocals, write concise original lyrics in the relevant sections, with one singable line per newline. For instrumental sections, omit lyrics. Acknowledgement cues use purpose listener_acknowledgement; other purposes must match their actual editorial job.`,
       input
     });
   }
@@ -151,7 +151,7 @@ export class OpenAILLMProvider implements LLMProvider {
       name: "horizon_producer_plan",
       schema: producerPlanSchema,
       effort: "low",
-      system: `${PRODUCER_POLICY} Choose the next original track strictly inside the current MusicalIntent and musical thesis. The horizon means a purposeful next chapter, not permission to rewrite the listener's durable intent. Vary instrumentation, rhythm, hook shape, structure, and production against recentProductionFingerprints. ${MUSIC_POLICY} Set a 180000 ms duration and a coherent 3-8 section structure with a clean intro and outro. Use suggestedTiming continuity. Usually omit onAirCue. When speech genuinely improves the handoff, use back_announce or tease; use mid_track_observation only for a rare, specific insight worth interrupting the music for.`,
+      system: `${PRODUCER_POLICY} Choose the next original track strictly inside the current MusicalIntent and musical thesis. The horizon means a purposeful next chapter, not permission to rewrite the listener's durable intent. Vary instrumentation, rhythm, hook shape, structure, and production against recentProductionFingerprints. ${MUSIC_POLICY} Set a 180000 ms duration and a coherent 3-8 section structure with a clean intro and outro. When the track has vocals, write concise original lyrics in the relevant sections, with one singable line per newline. For instrumental sections, omit lyrics. Use suggestedTiming continuity. Usually omit onAirCue. When speech genuinely improves the handoff, use back_announce or tease; use mid_track_observation only for a rare, specific insight worth interrupting the music for.`,
       input
     });
   }

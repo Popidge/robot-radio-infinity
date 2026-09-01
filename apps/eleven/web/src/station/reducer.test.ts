@@ -81,7 +81,11 @@ describe("ElevenLabs station reducer", () => {
     const started = reduce(createInitialState(), event({ type: "START_STATION", sessionId: "start-1", message: "rainy synth soul" }));
     expect(started.commands.map((command) => command.type)).toEqual(["PLAN_INITIAL_INTENT"]);
 
-    const openingPlan = makeProducerPlan(intent, { title: "Wet Neon", description: intent.description }, {
+    const openingSections = [
+      { name: "Verse", durationMs: 90_000, description: "Close vocal", lyrics: "Rain on the glass\nSignal coming through" },
+      { name: "Outro", durationMs: 90_000, description: "Instrumental handoff", transitionFriendly: true }
+    ];
+    const openingPlan = makeProducerPlan(intent, { title: "Wet Neon", description: intent.description, sections: openingSections }, {
       onAirCue: { text: "Come in out of the rain. This signal is yours.", purpose: "opening" },
       memoryUpdates: {
         listener: { preferences: ["rainy synth soul"] },
@@ -113,6 +117,11 @@ describe("ElevenLabs station reducer", () => {
     const audible = reduce(ready.state, event({ type: "TRACK_STARTED", trackId, revision, spec: planned.state.nextTrack.spec! }));
     expect(audible.commands).toEqual([{ type: "SPEAK", speechId: "cue-start-1", text: openingPlan.onAirCue!.text }]);
     expect(audible.state.showState.speechCadence).toMatchObject({ lastCuePurpose: "opening", cuesSpoken: 1 });
+    expect(audible.state.playback.sections).toEqual(openingSections);
+    expect(audible.state.conversation.map(({ role, text }) => ({ role, text }))).toEqual([
+      { role: "listener", text: "rainy synth soul" },
+      { role: "dj", text: openingPlan.onAirCue!.text }
+    ]);
   });
 
   it("starts urgency and full musical planning concurrently for each message", () => {

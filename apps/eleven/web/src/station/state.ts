@@ -52,6 +52,7 @@ export function createInitialState(): StationState {
     recentTracks: [],
     recentUserMessages: [],
     recentDjLines: [],
+    conversation: [],
     horizonFiredForTrackId: null
   };
 }

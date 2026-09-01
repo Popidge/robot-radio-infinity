@@ -1,22 +1,16 @@
 import { useEffect, useRef } from "react";
-import type { MusicalIntent } from "@robot-radio/eleven-shared";
+import type { VisualTheme } from "./visual-theme";
 
 interface AudioVisualizerProps {
   running: boolean;
   speaking: boolean;
-  intent: MusicalIntent;
   bpm?: number;
+  theme: VisualTheme;
   readSpectrum(target: Uint8Array<ArrayBuffer>): boolean;
   spectrumBinCount(): number;
 }
 
-function hashHue(value: string): number {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) hash = (hash * 31 + value.charCodeAt(index)) | 0;
-  return Math.abs(hash) % 360;
-}
-
-export function AudioVisualizer({ running, speaking, intent, bpm, readSpectrum, spectrumBinCount }: AudioVisualizerProps) {
+export function AudioVisualizer({ running, speaking, bpm, theme, readSpectrum, spectrumBinCount }: AudioVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
@@ -24,9 +18,7 @@ export function AudioVisualizer({ running, speaking, intent, bpm, readSpectrum, 
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
     const spectrum = new Uint8Array(spectrumBinCount());
-    const baseHue = hashHue([...intent.styles, ...intent.mood].join("|"));
-    const energy = intent.energy ?? 0.55;
-    const tempo = bpm ?? (intent.bpmRange ? (intent.bpmRange[0] + intent.bpmRange[1]) / 2 : 112);
+    const tempo = bpm ?? 112;
     let animationFrame = 0;
 
     const resize = () => {
@@ -47,35 +39,29 @@ export function AudioVisualizer({ running, speaking, intent, bpm, readSpectrum, 
       const beat = (Math.sin((now / 60_000) * tempo * Math.PI * 2) + 1) / 2;
       context.clearRect(0, 0, width, height);
 
-      const wash = context.createRadialGradient(width * 0.5, height * 0.55, 0, width * 0.5, height * 0.55, width * 0.62);
-      wash.addColorStop(0, `hsla(${baseHue}, 88%, 62%, ${0.08 + energy * 0.08 + beat * 0.025})`);
-      wash.addColorStop(0.55, `hsla(${(baseHue + 58) % 360}, 80%, 48%, 0.035)`);
-      wash.addColorStop(1, "rgba(0,0,0,0)");
-      context.fillStyle = wash;
-      context.fillRect(0, 0, width, height);
-
-      const bars = 56;
-      const gap = 3;
+      const bars = Math.max(56, Math.min(112, Math.floor(width / 12)));
+      const gap = Math.max(2, Math.min(5, width / 360));
       const barWidth = Math.max(2, (width - gap * (bars - 1)) / bars);
-      const centerY = height * 0.54;
+      const centerY = height * 0.5;
       for (let index = 0; index < bars; index += 1) {
-        const spectrumIndex = Math.min(spectrum.length - 1, Math.floor((index / bars) ** 1.65 * spectrum.length));
+        const normalizedIndex = index / Math.max(1, bars - 1);
+        const spectrumIndex = Math.min(spectrum.length - 1, Math.floor((Math.exp(normalizedIndex * 4.2) - 1) / (Math.exp(4.2) - 1) * spectrum.length));
         const liveValue = hasAudio ? (spectrum[spectrumIndex] ?? 0) / 255 : 0;
-        const idleValue = 0.05 + Math.sin(now * 0.0007 + index * 0.37) * 0.025;
-        const value = Math.max(0.025, hasAudio ? liveValue : idleValue);
-        const shaped = Math.pow(value, 1.35) * (0.62 + energy * 0.64);
-        const barHeight = Math.max(2, shaped * height * 0.58);
+        const idleValue = 0.018 + (Math.sin(now * 0.001 + index * 0.43) + 1) * 0.008;
+        const value = Math.max(0.012, hasAudio ? liveValue : idleValue);
+        const shaped = Math.min(1, Math.pow(value, 1.38 - theme.energy * 0.42) * (0.7 + theme.energy * 0.42));
+        const halfHeight = Math.max(1, shaped * height * 0.5);
         const x = index * (barWidth + gap);
-        const hue = (baseHue + index * 0.72 + (speaking ? 38 : 0)) % 360;
-        const gradient = context.createLinearGradient(0, centerY - barHeight / 2, 0, centerY + barHeight / 2);
-        gradient.addColorStop(0, `hsla(${hue}, 96%, ${speaking ? 72 : 64}%, ${0.42 + value * 0.5})`);
-        gradient.addColorStop(0.5, `hsla(${(hue + 22) % 360}, 92%, 68%, ${0.76 + beat * 0.12})`);
-        gradient.addColorStop(1, `hsla(${hue}, 90%, 50%, 0.18)`);
-        context.fillStyle = gradient;
-        context.beginPath();
-        context.roundRect(x, centerY - barHeight / 2, barWidth, barHeight, barWidth / 2);
-        context.fill();
+        const colour = normalizedIndex < 0.34 ? theme.primary : normalizedIndex < 0.72 ? theme.secondary : theme.accent;
+        context.globalAlpha = Math.min(1, theme.waveOpacity + value * 0.14 + beat * 0.025 + (speaking ? 0.08 : 0));
+        context.fillStyle = colour;
+        context.fillRect(x, centerY - halfHeight, barWidth, halfHeight);
+        context.fillRect(x, centerY, barWidth, halfHeight);
       }
+      context.globalAlpha = Math.min(0.78, theme.waveOpacity + 0.12);
+      context.fillStyle = theme.ink;
+      context.fillRect(0, Math.floor(centerY), width, 2);
+      context.globalAlpha = 1;
       animationFrame = requestAnimationFrame(draw);
     };
 
@@ -84,7 +70,7 @@ export function AudioVisualizer({ running, speaking, intent, bpm, readSpectrum, 
       cancelAnimationFrame(animationFrame);
       observer.disconnect();
     };
-  }, [bpm, intent, readSpectrum, running, speaking, spectrumBinCount]);
+  }, [bpm, readSpectrum, running, speaking, spectrumBinCount, theme]);
 
   return <canvas ref={canvasRef} className="audio-visualizer" aria-hidden="true" />;
 }

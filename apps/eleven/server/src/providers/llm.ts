@@ -38,6 +38,7 @@ function directiveFromMessage(message: string): TrackDirective {
   if (normalized.includes("german")) styles.push("German underground");
   const heavy = includesAny(normalized, ["heavy", "death", "hard", "aggressive"]);
   const calm = includesAny(normalized, ["calm", "soft", "ambient", "gentle"]);
+  const wantsVocals = includesAny(normalized, ["vocal", "lyrics", "sing", "singer", "song"]);
   return {
     title: titleFromMessage(message),
     description: message,
@@ -46,7 +47,15 @@ function directiveFromMessage(message: string): TrackDirective {
     energy: heavy ? 0.9 : calm ? 0.3 : 0.65,
     bpm: heavy ? 148 : calm ? 88 : 118,
     key: heavy ? "D minor" : calm ? "A minor" : "E minor",
-    durationMs: 45_000
+    vocals: wantsVocals ? "original expressive lead vocals" : "instrumental",
+    language: wantsVocals ? "English" : undefined,
+    durationMs: 45_000,
+    sections: wantsVocals ? [
+      { name: "Intro", durationMs: 8_000, description: "Establish the hook with one clear opening vocal line.", lyrics: "Turn the dial until the room comes through", transitionFriendly: true },
+      { name: "Verse", durationMs: 14_000, description: "Bring the vocal close and rhythmic.", lyrics: "I found a signal in the afterglow\nPulled it apart just to watch it grow" },
+      { name: "Chorus", durationMs: 13_000, description: "Open into a direct, memorable refrain.", lyrics: "Keep the signal alive\nTurn the noise into light" },
+      { name: "Outro", durationMs: 10_000, description: "Return to the hook and leave a clean handoff.", transitionFriendly: true }
+    ] : undefined
   };
 }
 

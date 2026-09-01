@@ -1,11 +1,16 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import type { StationState } from "@robot-radio/eleven-shared";
 import { AudioVisualizer } from "./AudioVisualizer";
+import { LyricLayer } from "./LyricLayer";
+import { RobotDj } from "./RobotDj";
+import { createVisualTheme } from "./visual-theme";
 
 interface PlayerProps {
   state: StationState;
+  paused: boolean;
   onStart(message: string): void;
   onStop(): void;
+  onTogglePause(): void;
   onMessage(message: string): void;
   readSpectrum(target: Uint8Array<ArrayBuffer>): boolean;
   spectrumBinCount(): number;
@@ -17,12 +22,13 @@ function formatTime(ms: number | null): string {
   return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
 }
 
-function phaseLabel(state: StationState): string {
+function phaseLabel(state: StationState, paused: boolean): string {
+  if (paused) return "Transmission paused";
   if (!state.running) return "Waiting for a signal";
   if (state.startup?.status === "planning") return "Imagining your station";
   if (state.startup) return "Opening the transmission";
   if (state.dj.speaking) return "Your DJ is on the mic";
-  if (state.transition.status === "audible") return "Following the music somewhere new";
+  if (state.transition.status === "audible") return "Moving somewhere new";
   if (state.nextTrack.status === "generating" || state.nextTrack.status === "buffering") return "Making what comes next";
   return "Live and listening";
 }
@@ -30,16 +36,36 @@ function phaseLabel(state: StationState): string {
 function listenerError(state: StationState): string {
   return state.playback.trackId
     ? "The DJ hit a snag with that plan, but the music is still playing. Try the request again."
-    : "The opening signal hit a problem. Open diagnostics for the technical detail."
+    : "The opening signal hit a problem. Add ?debug=1 to the address for technical detail.";
 }
 
-export function Player({ state, onStart, onStop, onMessage, readSpectrum, spectrumBinCount }: PlayerProps) {
+function ChatIcon() {
+  return (
+    <svg viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M4 5h24v17H13l-7 6v-6H4z" />
+      <path d="M9 11h14M9 16h9" />
+    </svg>
+  );
+}
+
+export function Player({ state, paused, onStart, onStop, onTogglePause, onMessage, readSpectrum, spectrumBinCount }: PlayerProps) {
   const [message, setMessage] = useState("");
   const [startingVibe, setStartingVibe] = useState("");
+  const [chatOpen, setChatOpen] = useState(false);
   const duration = state.playback.durationMs ?? 0;
   const progress = duration ? Math.min(100, (state.playback.playheadMs / duration) * 100) : 0;
-  const latestDjLine = state.recentDjLines.at(-1);
-  const recentRequests = state.recentUserMessages.slice(state.running ? -3 : 0);
+  const theme = useMemo(
+    () => createVisualTheme(state.playback, state.intent),
+    [state.intent, state.playback.energy, state.playback.mood, state.playback.styles, state.playback.title]
+  );
+  const visualStyle = {
+    "--paper": theme.paper,
+    "--ink": theme.ink,
+    "--track-primary": theme.primary,
+    "--track-secondary": theme.secondary,
+    "--track-accent": theme.accent,
+    "--track-energy": theme.energy
+  } as CSSProperties;
 
   function submit(event: FormEvent): void {
     event.preventDefault();
@@ -57,69 +83,96 @@ export function Player({ state, onStart, onStop, onMessage, readSpectrum, spectr
   }
 
   return (
-    <section className={`radio ${state.running ? "is-running" : "is-idle"}`}>
-      <header className="radio-header">
-        <a className="brand" href="/" aria-label="Robot Radio Infinity home">
-          <span className="brand-mark">RRI</span>
-          <span>Robot Radio <b>Infinity</b></span>
-        </a>
-        <div className="broadcast-state" aria-live="polite"><i className={state.running ? "live" : ""} />{phaseLabel(state)}</div>
-        {state.running ? <button className="stop-button" onClick={onStop}>End session</button> : null}
+    <section className={`radio-canvas ${state.running ? "is-running" : "is-idle"} ${paused ? "is-paused" : ""}`} style={visualStyle}>
+      <AudioVisualizer
+        running={state.running && !paused}
+        speaking={state.dj.speaking}
+        bpm={state.playback.bpm}
+        theme={theme}
+        readSpectrum={readSpectrum}
+        spectrumBinCount={spectrumBinCount}
+      />
+      {state.running ? <LyricLayer playback={state.playback} theme={theme} /> : null}
+
+      <header className="station-stamp">
+        <span className="station-wave" aria-hidden="true"><i /><i /><i /><i /><i /></span>
+        <span>Robot Radio Infinity</span>
       </header>
 
-      <div className="visual-stage">
-        <AudioVisualizer running={state.running} speaking={state.dj.speaking} intent={state.intent} bpm={state.playback.bpm} readSpectrum={readSpectrum} spectrumBinCount={spectrumBinCount} />
-        <div className="visual-vignette" />
+      <p className="broadcast-state sr-only" aria-live="polite">{phaseLabel(state, paused)}</p>
 
-        {!state.running ? (
-          <div className="welcome">
-            <p className="kicker">One continuous station, made around you</p>
-            <h1>What do you want<br />to hear today?</h1>
-            <p className="welcome-copy">Give the DJ a feeling, a place, a genre—or something that should not work together.</p>
-            <form className="vibe-form" onSubmit={start}>
-              <label className="sr-only" htmlFor="starting-vibe">What&apos;s your vibe today?</label>
-              <input id="starting-vibe" value={startingVibe} onChange={(event) => setStartingVibe(event.target.value)} placeholder="Warm psychedelic soul for a rainy Sunday…" autoFocus />
-              <button className="send-button" disabled={!startingVibe.trim()}>Start listening <span>→</span></button>
-            </form>
-          </div>
-        ) : (
-          <div className="on-air-card">
-            <div className="on-air-label"><span>On air</span><i /></div>
+      {!state.running ? (
+        <div className="welcome-panel comic-panel">
+          <h1>What do you want to hear today?</h1>
+          <form className="vibe-form" onSubmit={start}>
+            <label className="sr-only" htmlFor="starting-vibe">What&apos;s your vibe today?</label>
+            <input
+              id="starting-vibe"
+              value={startingVibe}
+              onChange={(event) => setStartingVibe(event.target.value)}
+              placeholder="Warm psychedelic soul for a rainy Sunday…"
+              autoFocus
+            />
+            <button disabled={!startingVibe.trim()} aria-label="Start listening">→</button>
+          </form>
+        </div>
+      ) : (
+        <>
+          <div className="track-title-panel comic-panel" aria-live="polite">
             <h1>{state.playback.title ?? "The opening signal is taking shape"}</h1>
-            <p>{state.playback.styleSummary ?? state.intent.description}</p>
-            <div className="intent-tags">
-              {[...state.intent.styles, ...state.intent.mood].slice(0, 5).map((tag) => <span key={tag}>{tag}</span>)}
-            </div>
           </div>
-        )}
-      </div>
+
+          <div className="transport-panel comic-panel" aria-label="Player controls">
+            <button className="transport-button" onClick={onTogglePause} aria-label={paused ? "Resume" : "Pause"}>
+              {paused ? <span className="play-icon" aria-hidden="true" /> : <span className="pause-icon" aria-hidden="true"><i /><i /></span>}
+            </button>
+            <time>{formatTime(state.playback.playheadMs)}</time>
+            <div className="timeline" aria-label={`${Math.round(progress)} percent played`}>
+              <div style={{ width: `${progress}%` }} />
+            </div>
+            <time>{formatTime(state.playback.durationMs)}</time>
+            <button className="end-button" onClick={onStop} aria-label="End session">×</button>
+          </div>
+        </>
+      )}
+
+      <RobotDj state={state} />
 
       {state.running ? (
-        <div className="listener-console">
-          <div className="progress-block">
-            <div className="timeline"><div style={{ width: `${progress}%` }} /></div>
-            <div className="time-row"><span>{formatTime(state.playback.playheadMs)}</span><span>{formatTime(state.playback.remainingMs)} remaining</span></div>
-          </div>
-
-          {latestDjLine ? (
-            <div className="dj-line" aria-live="polite">
-              <span>DJ</span><p>“{latestDjLine}”</p>{state.dj.speaking ? <i>speaking</i> : null}
+        <div className={`chat-dock ${chatOpen ? "is-open" : ""}`}>
+          {chatOpen ? (
+            <div className="chat-panel comic-panel">
+              <button className="chat-close" onClick={() => setChatOpen(false)} aria-label="Collapse conversation">↓</button>
+              <div className="chat-history" aria-live="polite">
+                {state.conversation.map((entry, index) => (
+                  <p className={`chat-message is-${entry.role}`} key={`${entry.at}-${index}`}>
+                    <b>{entry.role === "dj" ? "DJ" : "YOU"}</b>
+                    <span>{entry.text}</span>
+                  </p>
+                ))}
+              </div>
+              <form className="chat-form" onSubmit={submit}>
+                <label className="sr-only" htmlFor="listener-request">Steer the station</label>
+                <input
+                  id="listener-request"
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  placeholder="Steer the station…"
+                  autoComplete="off"
+                />
+                <button disabled={!message.trim()} aria-label="Send request">→</button>
+              </form>
             </div>
-          ) : null}
-
-          <form className="chat-form" onSubmit={submit}>
-            <label htmlFor="listener-request">Steer the station</label>
-            <div className="chat-input">
-              <input id="listener-request" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Keep this feeling, make the next one stranger, change it now…" autoComplete="off" />
-              <button className="send-button" disabled={!message.trim()}>Send <span>→</span></button>
-            </div>
-          </form>
-
-          {recentRequests.length ? <div className="request-memory" aria-label="Recent requests">{recentRequests.map((request, index) => <span key={`${request}-${index}`}>{request}</span>)}</div> : null}
+          ) : (
+            <button className="chat-toggle comic-panel" onClick={() => setChatOpen(true)} aria-label="Open conversation">
+              <ChatIcon />
+              {state.pendingUser && !state.pendingUser.applied ? <i aria-hidden="true" /> : null}
+            </button>
+          )}
         </div>
       ) : null}
 
-      {state.error ? <div className="experience-error">{listenerError(state)}</div> : null}
+      {state.error ? <div className="experience-error comic-panel">{listenerError(state)}</div> : null}
     </section>
   );
 }

@@ -290,6 +290,12 @@ export class AudioEngine {
     return this.analyser?.frequencyBinCount ?? 128;
   }
 
+  async setPaused(paused: boolean): Promise<void> {
+    if (!this.context) return;
+    if (paused) await this.context.suspend();
+    else await this.context.resume();
+  }
+
   async stopAll(): Promise<void> {
     for (const source of this.incomingTracks.values()) this.dispose(source);
     for (const source of this.ttsSources.values()) this.dispose(source);

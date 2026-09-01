@@ -57,6 +57,7 @@ export class StationRuntime {
   isSlowGeneration(): boolean { return this.slowGeneration }
   readSpectrum = (target: Uint8Array<ArrayBuffer>): boolean => this.audio.readSpectrum(target);
   spectrumBinCount = (): number => this.audio.spectrumBinCount();
+  setPaused(paused: boolean): Promise<void> { return this.audio.setPaused(paused) }
 
   dispose(): void {
     if (this.progressTimer !== null) window.clearInterval(this.progressTimer);

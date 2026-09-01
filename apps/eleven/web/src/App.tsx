@@ -10,6 +10,8 @@ export default function App() {
   const runtime = runtimeRef.current;
   const state = useSyncExternalStore(runtime.subscribe, runtime.getSnapshot);
   const [slowGeneration, setSlowGeneration] = useState(runtime.isSlowGeneration());
+  const [paused, setPaused] = useState(false);
+  const showDiagnostics = new URLSearchParams(window.location.search).has("debug");
 
   useEffect(() => {
     const dispose = () => runtime.dispose();
@@ -22,11 +24,31 @@ export default function App() {
     setSlowGeneration(enabled);
   }
 
+  async function togglePaused(): Promise<void> {
+    const next = !paused;
+    await runtime.setPaused(next);
+    setPaused(next);
+  }
+
+  function stop(): void {
+    setPaused(false);
+    runtime.stop();
+  }
+
   return (
     <main className="app-shell">
-      <Player state={state} onStart={(message) => void runtime.start(message)} onStop={() => runtime.stop()} onMessage={(message) => runtime.sendUserMessage(message)} readSpectrum={runtime.readSpectrum} spectrumBinCount={runtime.spectrumBinCount} />
+      <Player
+        state={state}
+        paused={paused}
+        onStart={(message) => { setPaused(false); void runtime.start(message) }}
+        onStop={stop}
+        onTogglePause={() => void togglePaused()}
+        onMessage={(message) => runtime.sendUserMessage(message)}
+        readSpectrum={runtime.readSpectrum}
+        spectrumBinCount={runtime.spectrumBinCount}
+      />
 
-      <details className="diagnostics">
+      {showDiagnostics ? <details className="diagnostics">
         <summary><span>Transmission diagnostics</span><small>Buffers, orchestration and test controls</small></summary>
         <div className="test-controls">
           <button disabled={!state.running} onClick={() => runtime.sendUserMessage("this is great")}>Praise</button>
@@ -35,7 +57,7 @@ export default function App() {
           <label><input type="checkbox" checked={slowGeneration} onChange={(event) => updateSlowGeneration(event.target.checked)} />Simulate slow generation</label>
         </div>
         <StationDebugger state={state} />
-      </details>
+      </details> : null}
     </main>
   );
 }

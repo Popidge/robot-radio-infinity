@@ -220,10 +220,17 @@ function finish(state: StationState, event: StationEvent, commands: StationComma
     (lines, command) => command.type === "SPEAK" ? append(lines, command.text, 12) : lines,
     state.recentDjLines
   );
+  const conversation = commands.reduce(
+    (messages, command) => command.type === "SPEAK"
+      ? append(messages, { role: "dj" as const, text: command.text, at: event.at }, 24)
+      : messages,
+    state.conversation
+  );
   return {
     state: {
       ...state,
       recentDjLines,
+      conversation,
       recentEvents: append(state.recentEvents, event, 500),
       recentCommands: [...state.recentCommands, ...commands].slice(-500)
     },
@@ -554,7 +561,14 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
   switch (event.type) {
     case "START_STATION": {
       const fresh = createInitialState();
-      next = { ...fresh, running: true, intentRevision: 1, startup: { requestId: event.sessionId, message: event.message, status: "planning" } };
+      next = {
+        ...fresh,
+        running: true,
+        intentRevision: 1,
+        startup: { requestId: event.sessionId, message: event.message, status: "planning" },
+        recentUserMessages: [event.message],
+        conversation: [{ role: "listener", text: event.message, at: event.at }]
+      };
       commands = [{ type: "PLAN_INITIAL_INTENT", input: { requestId: event.sessionId, message: event.message, showState: fresh.showState } }];
       break;
     }
@@ -597,7 +611,8 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
         horizonRequestId: interruptedHorizonPlan ? state.continuityPlanRequestId : state.horizonRequestId,
         dj: { ...state.dj, pending: undefined },
         pendingUser: { requestId: event.requestId, revision, message: event.message, applied: false },
-        recentUserMessages: append(state.recentUserMessages, event.message, 12)
+        recentUserMessages: append(state.recentUserMessages, event.message, 12),
+        conversation: append(state.conversation, { role: "listener", text: event.message, at: event.at }, 24)
       };
       commands = [
         { type: "ASSESS_USER_MESSAGE", input: urgencyInput(state, event.requestId, event.message) },
@@ -755,7 +770,9 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
         phase: "playing",
         playback: {
           trackId: event.trackId, title: event.spec.title, playheadMs: 0, durationMs: event.spec.durationMs, remainingMs: event.spec.durationMs,
-          bpm: event.spec.bpm, key: event.spec.key, styleSummary: event.spec.description, energy: event.spec.energy, bufferedMs: state.nextTrack.bufferedMs
+          bpm: event.spec.bpm, key: event.spec.key, styleSummary: event.spec.description, energy: event.spec.energy,
+          styles: event.spec.styles, mood: event.spec.mood, vocals: event.spec.vocals, sections: event.spec.sections,
+          bufferedMs: state.nextTrack.bufferedMs
         },
         nextTrack: emptyNext(),
         transition: emptyTransition(),

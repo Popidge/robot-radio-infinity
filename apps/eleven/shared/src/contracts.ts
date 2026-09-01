@@ -197,6 +197,10 @@ export interface PlaybackState {
   key?: string;
   styleSummary?: string;
   energy?: number;
+  styles?: string[];
+  mood?: string[];
+  vocals?: string;
+  sections?: TrackSection[];
   bufferedMs: number;
 }
 
@@ -238,6 +242,12 @@ export interface PendingUserRequest {
 }
 export interface StartupState { requestId: string; message: string; status: "planning" | "generating" }
 
+export interface ConversationMessage {
+  role: "listener" | "dj";
+  text: string;
+  at: number;
+}
+
 export interface StationState {
   phase: StationPhase;
   running: boolean;
@@ -263,6 +273,7 @@ export interface StationState {
   recentTracks: RecentTrack[];
   recentUserMessages: string[];
   recentDjLines: string[];
+  conversation: ConversationMessage[];
   horizonFiredForTrackId: string | null;
   horizonRequestId?: string;
   continuityPlanRequestId?: string;
