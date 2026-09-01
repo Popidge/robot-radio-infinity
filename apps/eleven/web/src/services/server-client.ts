@@ -5,6 +5,7 @@ import {
   type AudioStreamEncoding,
   type ContinuityInput,
   type InitialIntentInput,
+  type MusicStreamMetadata,
   type ProducerPlan,
   type ShowState,
   type StationCommand,
@@ -22,6 +23,7 @@ import { StreamAudioDecoder } from "../audio/stream-audio-decoder";
 export interface RemoteStreamCallbacks {
   onStart(metadata: { id: string; encoding: AudioStreamEncoding; sampleRate: number; channels: number; durationMs: number | null }): void;
   onChunk(chunk: Float32Array): void;
+  onMetadata?(metadata: MusicStreamMetadata): void;
   onEnd(): void;
   onError(error: Error): void;
 }
@@ -195,6 +197,7 @@ export class ServerClient {
           sampleRate?: number;
           channels?: number;
           durationMs?: number | null;
+          wordTimestamps?: MusicStreamMetadata["wordTimestamps"];
           error?: string;
         };
         if (message.type === "stream-start") {
@@ -210,6 +213,8 @@ export class ServerClient {
           };
           decoder = new StreamAudioDecoder(metadata);
           callbacks.onStart(metadata);
+        } else if (message.type === "stream-metadata") {
+          callbacks.onMetadata?.({ wordTimestamps: message.wordTimestamps });
         } else if (message.type === "stream-end") {
           enqueue(async () => {
             if (!decoder) throw new Error("Stream ended before metadata arrived");

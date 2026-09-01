@@ -135,6 +135,13 @@ async function pipeStream(
       durationMs: stream.durationMs
     })
   );
+  const unsubscribeMetadata = "subscribeMetadata" in stream
+    ? stream.subscribeMetadata?.((metadata) => {
+        if (webSocket.readyState === WebSocket.OPEN) {
+          webSocket.send(JSON.stringify({ type: "stream-metadata", id: stream.id, ...metadata }));
+        }
+      })
+    : undefined;
 
   try {
     for await (const chunk of stream.chunks) {
@@ -195,6 +202,8 @@ async function pipeStream(
     if (webSocket.readyState === WebSocket.OPEN) {
       webSocket.send(JSON.stringify({ type: "stream-error", error: logger.message(error) }));
     }
+  } finally {
+    unsubscribeMetadata?.();
   }
 }
 

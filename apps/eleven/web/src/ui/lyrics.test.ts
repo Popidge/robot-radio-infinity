@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeLyricCue, buildLyricCues } from "./lyrics";
+import { activeLyricCue, buildLyricCues, splitLyricForDisplay } from "./lyrics";
 
 describe("lyric cues", () => {
   it("maps each supplied lyric line into its section window", () => {
@@ -30,5 +30,32 @@ describe("lyric cues", () => {
     expect(buildLyricCues([
       { name: "Break", durationMs: 30_000, description: "Instrumental", lyrics: "{guitar solo}\n[Break]" }
     ], 30_000)).toEqual([]);
+  });
+
+  it("uses returned word timestamps instead of estimated section timing when they match", () => {
+    const cues = buildLyricCues([
+      { name: "Verse", durationMs: 30_000, description: "Voice enters", lyrics: "First signal through the room\nSecond signal starts to bloom" }
+    ], 30_000, [
+      { word: "First", startMs: 4_000, endMs: 4_350 },
+      { word: "signal", startMs: 4_360, endMs: 4_800 },
+      { word: "through", startMs: 4_810, endMs: 5_120 },
+      { word: "the", startMs: 5_130, endMs: 5_260 },
+      { word: "room,", startMs: 5_270, endMs: 5_900 },
+      { word: "Second", startMs: 11_000, endMs: 11_420 },
+      { word: "signal", startMs: 11_430, endMs: 11_850 },
+      { word: "starts", startMs: 11_860, endMs: 12_150 },
+      { word: "to", startMs: 12_160, endMs: 12_280 },
+      { word: "bloom", startMs: 12_290, endMs: 12_900 }
+    ]);
+
+    expect(cues[0]?.startMs).toBe(3_920);
+    expect(cues[0]?.endMs).toBe(6_160);
+    expect(cues[1]?.startMs).toBe(10_920);
+    expect(cues[1]?.endMs).toBe(13_160);
+  });
+
+  it("balances a lyric across two lines without creating separate cues", () => {
+    expect(splitLyricForDisplay("Turn the noise into light")).toEqual(["Turn the noise", "into light"]);
+    expect(splitLyricForDisplay("Signal")).toEqual(["Signal"]);
   });
 });

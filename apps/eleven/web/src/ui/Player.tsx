@@ -39,21 +39,13 @@ function listenerError(state: StationState): string {
     : "The opening signal hit a problem. Add ?debug=1 to the address for technical detail.";
 }
 
-function ChatIcon() {
-  return (
-    <svg viewBox="0 0 32 32" aria-hidden="true">
-      <path d="M4 5h24v17H13l-7 6v-6H4z" />
-      <path d="M9 11h14M9 16h9" />
-    </svg>
-  );
-}
-
 export function Player({ state, paused, onStart, onStop, onTogglePause, onMessage, readSpectrum, spectrumBinCount }: PlayerProps) {
   const [message, setMessage] = useState("");
   const [startingVibe, setStartingVibe] = useState("");
   const [chatOpen, setChatOpen] = useState(false);
   const duration = state.playback.durationMs ?? 0;
   const progress = duration ? Math.min(100, (state.playback.playheadMs / duration) * 100) : 0;
+  const latestMessage = state.conversation.at(-1);
   const theme = useMemo(
     () => createVisualTheme(state.playback, state.intent),
     [state.intent, state.playback.energy, state.playback.mood, state.playback.styles, state.playback.title]
@@ -122,55 +114,55 @@ export function Player({ state, paused, onStart, onStop, onTogglePause, onMessag
             <h1>{state.playback.title ?? "The opening signal is taking shape"}</h1>
           </div>
 
-          <div className="transport-panel comic-panel" aria-label="Player controls">
-            <button className="transport-button" onClick={onTogglePause} aria-label={paused ? "Resume" : "Pause"}>
-              {paused ? <span className="play-icon" aria-hidden="true" /> : <span className="pause-icon" aria-hidden="true"><i /><i /></span>}
-            </button>
-            <time>{formatTime(state.playback.playheadMs)}</time>
-            <div className="timeline" aria-label={`${Math.round(progress)} percent played`}>
-              <div style={{ width: `${progress}%` }} />
+          <div className={`control-stack ${chatOpen ? "is-chat-open" : ""}`}>
+            {chatOpen ? (
+              <div className="chat-panel">
+                <button className="chat-close" onClick={() => setChatOpen(false)} aria-label="Collapse conversation">↓</button>
+                <div className="chat-history" aria-live="polite">
+                  {state.conversation.map((entry, index) => (
+                    <p className={`chat-message is-${entry.role}`} key={`${entry.at}-${index}`}>
+                      <b>{entry.role === "dj" ? "DJ" : "YOU"}</b>
+                      <span>{entry.text}</span>
+                    </p>
+                  ))}
+                </div>
+                <form className="chat-form" onSubmit={submit}>
+                  <label className="sr-only" htmlFor="listener-request">Steer the station</label>
+                  <input
+                    id="listener-request"
+                    value={message}
+                    onChange={(event) => setMessage(event.target.value)}
+                    placeholder="Steer the station…"
+                    autoComplete="off"
+                    autoFocus
+                  />
+                  <button disabled={!message.trim()} aria-label="Send request">→</button>
+                </form>
+              </div>
+            ) : (
+              <button className={`chat-peek ${state.pendingUser && !state.pendingUser.applied ? "has-pending" : ""}`} onClick={() => setChatOpen(true)} aria-label="Open conversation">
+                <b>{latestMessage?.role === "listener" ? "YOU" : "DJ"}</b>
+                <span>{latestMessage?.text ?? phaseLabel(state, paused)}</span>
+                <i aria-hidden="true">↗</i>
+              </button>
+            )}
+
+            <div className="transport-panel" aria-label="Player controls">
+              <button className="transport-button" onClick={onTogglePause} aria-label={paused ? "Resume" : "Pause"}>
+                {paused ? <span className="play-icon" aria-hidden="true" /> : <span className="pause-icon" aria-hidden="true"><i /><i /></span>}
+              </button>
+              <time>{formatTime(state.playback.playheadMs)}</time>
+              <div className="timeline" aria-label={`${Math.round(progress)} percent played`}>
+                <div style={{ width: `${progress}%` }} />
+              </div>
+              <time>{formatTime(state.playback.durationMs)}</time>
+              <button className="end-button" onClick={onStop} aria-label="End session">×</button>
             </div>
-            <time>{formatTime(state.playback.durationMs)}</time>
-            <button className="end-button" onClick={onStop} aria-label="End session">×</button>
           </div>
         </>
       )}
 
       <RobotDj state={state} />
-
-      {state.running ? (
-        <div className={`chat-dock ${chatOpen ? "is-open" : ""}`}>
-          {chatOpen ? (
-            <div className="chat-panel comic-panel">
-              <button className="chat-close" onClick={() => setChatOpen(false)} aria-label="Collapse conversation">↓</button>
-              <div className="chat-history" aria-live="polite">
-                {state.conversation.map((entry, index) => (
-                  <p className={`chat-message is-${entry.role}`} key={`${entry.at}-${index}`}>
-                    <b>{entry.role === "dj" ? "DJ" : "YOU"}</b>
-                    <span>{entry.text}</span>
-                  </p>
-                ))}
-              </div>
-              <form className="chat-form" onSubmit={submit}>
-                <label className="sr-only" htmlFor="listener-request">Steer the station</label>
-                <input
-                  id="listener-request"
-                  value={message}
-                  onChange={(event) => setMessage(event.target.value)}
-                  placeholder="Steer the station…"
-                  autoComplete="off"
-                />
-                <button disabled={!message.trim()} aria-label="Send request">→</button>
-              </form>
-            </div>
-          ) : (
-            <button className="chat-toggle comic-panel" onClick={() => setChatOpen(true)} aria-label="Open conversation">
-              <ChatIcon />
-              {state.pendingUser && !state.pendingUser.applied ? <i aria-hidden="true" /> : null}
-            </button>
-          )}
-        </div>
-      ) : null}
 
       {state.error ? <div className="experience-error comic-panel">{listenerError(state)}</div> : null}
     </section>

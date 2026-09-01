@@ -68,7 +68,7 @@ describe("Eleven Music composition plans", () => {
   });
 
   it("keeps instrumental prose out of chunk text and puts musical direction in styles", async () => {
-    const fetchMock = vi.fn(async () => rejectedResponse());
+    const fetchMock = vi.fn(async (_input: string | URL | Request) => rejectedResponse());
     vi.stubGlobal("fetch", fetchMock);
     const provider = new ElevenMusicApiProvider("test-key");
 
@@ -88,7 +88,7 @@ describe("Eleven Music composition plans", () => {
   });
 
   it("uses chunk text for supplied original lyrics, not production prose", async () => {
-    const fetchMock = vi.fn(async () => rejectedResponse());
+    const fetchMock = vi.fn(async (_input: string | URL | Request) => rejectedResponse());
     vi.stubGlobal("fetch", fetchMock);
     const provider = new ElevenMusicApiProvider("test-key");
     const vocalTrack: TrackSpec = {
@@ -106,10 +106,44 @@ describe("Eleven Music composition plans", () => {
     await expect(provider.generate(vocalTrack, 5)).rejects.toThrow(/HTTP 422/);
 
     const chunk = requestBody(fetchMock).composition_plan.chunks[0];
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/v1/music/detailed/stream");
+    expect(requestBody(fetchMock).with_timestamps).toBe(true);
     expect(chunk.text).toBe("[Clear Boot]\nSignals gather in the glow\nQuiet patterns start to show");
     expect(chunk.text).not.toContain(vocalTrack.description);
     expect(chunk.positive_styles).toContain("original vocals: restrained original alto vocal");
     expect(chunk.positive_styles).toContain("vocal language: English");
+  });
+
+  it("extracts MP3 audio and word timing slices from the detailed event stream", async () => {
+    const first = new Uint8Array([0x49, 0x44, 0x33, 3]);
+    const second = new Uint8Array([4, 5, 6, 7]);
+    const sse = [
+      "event: audio_chunk",
+      `data: ${JSON.stringify({ audio_chunk: Buffer.from(first).toString("base64"), words_timestamps: [] })}`,
+      "",
+      "event: audio_chunk",
+      `data: ${JSON.stringify({ data: { audio: Buffer.from(second).toString("base64") }, words_timestamps: [{ word: "Signals", start_ms: 1200, end_ms: 1800 }] })}`,
+      "",
+      "event: complete",
+      "data: {}",
+      ""
+    ].join("\n");
+    const fetchMock = vi.fn(async () => new Response(sse, { headers: { "content-type": "text/event-stream" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new ElevenMusicApiProvider("test-key");
+    const stream = await provider.generate({
+      ...instrumentalTrack,
+      id: "track-timed-vocal",
+      vocals: "restrained original alto vocal",
+      sections: [{ ...instrumentalTrack.sections![0]!, durationMs: 30_000, lyrics: "Signals gather in the glow" }]
+    }, 5);
+    const metadata: unknown[] = [];
+    stream.subscribeMetadata?.((value) => metadata.push(value));
+    const received: number[] = [];
+    for await (const chunk of stream.chunks) received.push(...chunk);
+
+    expect(received).toEqual([...first, ...second]);
+    expect(metadata).toEqual([{ wordTimestamps: [{ word: "Signals", startMs: 1200, endMs: 1800 }] }]);
   });
 
   it("keeps transition instructions in styles rather than lyric text", async () => {

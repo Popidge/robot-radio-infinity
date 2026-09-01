@@ -187,6 +187,16 @@ export interface ContinuityInput {
   showState: ShowState;
 }
 
+export interface MusicWordTimestamp {
+  word: string;
+  startMs: number;
+  endMs: number;
+}
+
+export interface MusicStreamMetadata {
+  wordTimestamps?: MusicWordTimestamp[];
+}
+
 export interface PlaybackState {
   trackId: string | null;
   title: string | null;
@@ -201,6 +211,7 @@ export interface PlaybackState {
   mood?: string[];
   vocals?: string;
   sections?: TrackSection[];
+  wordTimestamps?: MusicWordTimestamp[];
   bufferedMs: number;
 }
 
@@ -303,6 +314,7 @@ export type StationEvent =
   | (EventBase & { type: "TRACK_FIRST_AUDIO"; trackId: string; revision: number; latencyMs: number })
   | (EventBase & { type: "TRACK_BUFFER_UPDATED"; trackId: string; revision: number; bufferedMs: number; generatedMs: number; generationRate: number })
   | (EventBase & { type: "TRACK_DURATION_RESOLVED"; trackId: string; revision: number; durationMs: number })
+  | (EventBase & { type: "TRACK_LYRIC_TIMESTAMPS_RECEIVED"; trackId: string; revision: number; wordTimestamps: MusicWordTimestamp[] })
   | (EventBase & { type: "TRACK_READY"; trackId: string; revision: number })
   | (EventBase & { type: "TRACK_GENERATION_FAILED"; trackId: string; revision: number; error: string })
   | (EventBase & { type: "TRANSITION_GENERATION_STARTED"; transitionId: string; revision: number; spec: TransitionSpec })
@@ -345,7 +357,10 @@ export interface StreamDescription {
   channels: number;
   durationMs: number | null;
 }
-export interface MusicStream extends StreamDescription { chunks: AsyncIterable<Uint8Array> }
+export interface MusicStream extends StreamDescription {
+  chunks: AsyncIterable<Uint8Array>;
+  subscribeMetadata?(listener: (metadata: MusicStreamMetadata) => void): () => void;
+}
 export interface AudioStream extends StreamDescription { chunks: AsyncIterable<Uint8Array> }
 export interface MusicProvider { generate(spec: TrackSpec, generationRate: number): Promise<MusicStream>; cancel(id: string): Promise<void> }
 export interface TransitionProvider { generate(spec: TransitionSpec, generationRate: number): Promise<MusicStream>; cancel(id: string): Promise<void> }

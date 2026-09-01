@@ -1,4 +1,4 @@
-import type { StationCommand, StationEvent, StationState, TrackSpec, TransitionSpec } from "@robot-radio/eleven-shared";
+import type { MusicWordTimestamp, StationCommand, StationEvent, StationState, TrackSpec, TransitionSpec } from "@robot-radio/eleven-shared";
 import { AudioEngine } from "../audio/audio-engine";
 import { ServerClient, type RemoteStream, type StationDebugState } from "../services/server-client";
 import { NEXT_TRACK_HORIZON_MS, SAFE_START_BUFFER_MS, TRANSITION_SAFE_BUFFER_MS, reduce } from "./reducer";
@@ -14,6 +14,15 @@ interface GeneratedRuntime<TSpec extends { id: string; revision: number; duratio
   firstAudio: boolean;
   ready: boolean;
   lastUpdateAt: number;
+  wordTimestamps: MusicWordTimestamp[];
+}
+
+function mergeWordTimestamps(current: MusicWordTimestamp[], incoming: MusicWordTimestamp[]): MusicWordTimestamp[] {
+  const timestamps = new Map<string, MusicWordTimestamp>();
+  for (const timestamp of [...current, ...incoming]) {
+    timestamps.set(`${timestamp.startMs}:${timestamp.endMs}:${timestamp.word}`, timestamp);
+  }
+  return [...timestamps.values()].sort((left, right) => left.startMs - right.startMs || left.endMs - right.endMs);
 }
 
 function nowEvent<T extends Omit<StationEvent, "at">>(event: T): StationEvent {
@@ -184,6 +193,13 @@ export class StationRuntime {
           this.dispatch(nowEvent({ type: "TRACK_READY", trackId: spec.id, revision: spec.revision }));
         }
       },
+      onMetadata: (metadata) => {
+        if (!metadata.wordTimestamps?.length) return;
+        runtime.wordTimestamps = mergeWordTimestamps(runtime.wordTimestamps, metadata.wordTimestamps);
+        if (this.state.playback.trackId === spec.id) {
+          this.dispatch(nowEvent({ type: "TRACK_LYRIC_TIMESTAMPS_RECEIVED", trackId: spec.id, revision: spec.revision, wordTimestamps: runtime.wordTimestamps }));
+        }
+      },
       onEnd: () => {
         const durationMs = Math.max(1, Math.round(runtime.generatedMs));
         runtime.spec = { ...runtime.spec, durationMs };
@@ -195,7 +211,7 @@ export class StationRuntime {
       },
       onError: (error) => this.dispatch(nowEvent({ type: "TRACK_GENERATION_FAILED", trackId: spec.id, revision: spec.revision, error: error.message }))
     });
-    Object.assign(runtime, { spec, stream, startedAt: performance.now(), generatedMs: 0, firstAudio: false, ready: false, lastUpdateAt: 0 });
+    Object.assign(runtime, { spec, stream, startedAt: performance.now(), generatedMs: 0, firstAudio: false, ready: false, lastUpdateAt: 0, wordTimestamps: [] });
     this.tracks.set(spec.id, runtime);
   }
 
@@ -232,7 +248,7 @@ export class StationRuntime {
       },
       onError: (error) => this.dispatch(nowEvent({ type: "TRANSITION_GENERATION_FAILED", transitionId: spec.id, revision: spec.revision, error: error.message }))
     });
-    Object.assign(runtime, { spec, stream, startedAt: performance.now(), generatedMs: 0, firstAudio: false, ready: false, lastUpdateAt: 0 });
+    Object.assign(runtime, { spec, stream, startedAt: performance.now(), generatedMs: 0, firstAudio: false, ready: false, lastUpdateAt: 0, wordTimestamps: [] });
     this.transitions.set(spec.id, runtime);
   }
 
@@ -320,6 +336,10 @@ export class StationRuntime {
     if (!spec) return;
     this.endedTrackId = null;
     this.dispatch(nowEvent({ type: "TRACK_STARTED", trackId, revision: spec.revision, spec }));
+    const wordTimestamps = this.tracks.get(trackId)?.wordTimestamps;
+    if (wordTimestamps?.length) {
+      this.dispatch(nowEvent({ type: "TRACK_LYRIC_TIMESTAMPS_RECEIVED", trackId, revision: spec.revision, wordTimestamps }));
+    }
   }
 
   private transitionEnded(spec: TransitionSpec): void {

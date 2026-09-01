@@ -10,6 +10,23 @@ interface AudioVisualizerProps {
   spectrumBinCount(): number;
 }
 
+const MAX_VISUALIZER_FREQUENCY_HZ = 15_000;
+const MIN_VISUALIZER_FREQUENCY_HZ = 42;
+
+export function visualizerSpectrumIndex(
+  barIndex: number,
+  barCount: number,
+  spectrumLength: number,
+  maxFrequencyHz = MAX_VISUALIZER_FREQUENCY_HZ,
+  sampleRate = 48_000
+): number {
+  if (spectrumLength <= 1 || barCount <= 1) return 0;
+  const normalized = Math.max(0, Math.min(1, barIndex / (barCount - 1)));
+  const frequency = MIN_VISUALIZER_FREQUENCY_HZ * Math.pow(maxFrequencyHz / MIN_VISUALIZER_FREQUENCY_HZ, normalized);
+  const index = Math.round((frequency / (sampleRate / 2)) * spectrumLength);
+  return Math.max(0, Math.min(spectrumLength - 1, index));
+}
+
 export function AudioVisualizer({ running, speaking, bpm, theme, readSpectrum, spectrumBinCount }: AudioVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -45,8 +62,13 @@ export function AudioVisualizer({ running, speaking, bpm, theme, readSpectrum, s
       const centerY = height * 0.5;
       for (let index = 0; index < bars; index += 1) {
         const normalizedIndex = index / Math.max(1, bars - 1);
-        const spectrumIndex = Math.min(spectrum.length - 1, Math.floor((Math.exp(normalizedIndex * 4.2) - 1) / (Math.exp(4.2) - 1) * spectrum.length));
-        const liveValue = hasAudio ? (spectrum[spectrumIndex] ?? 0) / 255 : 0;
+        const spectrumIndex = visualizerSpectrumIndex(index, bars, spectrum.length);
+        const nearbyPeak = Math.max(
+          spectrum[Math.max(0, spectrumIndex - 1)] ?? 0,
+          spectrum[spectrumIndex] ?? 0,
+          spectrum[Math.min(spectrum.length - 1, spectrumIndex + 1)] ?? 0
+        );
+        const liveValue = hasAudio ? nearbyPeak / 255 : 0;
         const idleValue = 0.018 + (Math.sin(now * 0.001 + index * 0.43) + 1) * 0.008;
         const value = Math.max(0.012, hasAudio ? liveValue : idleValue);
         const shaped = Math.min(1, Math.pow(value, 1.38 - theme.energy * 0.42) * (0.7 + theme.energy * 0.42));

@@ -682,6 +682,9 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
     case "TRACK_DURATION_RESOLVED":
       if (eventMatchesNext(state, event.trackId, event.revision) && state.nextTrack.spec) next = { ...state, nextTrack: { ...state.nextTrack, spec: { ...state.nextTrack.spec, durationMs: event.durationMs } } };
       break;
+    case "TRACK_LYRIC_TIMESTAMPS_RECEIVED":
+      if (state.playback.trackId === event.trackId) next = { ...state, playback: { ...state.playback, wordTimestamps: event.wordTimestamps } };
+      break;
     case "TRACK_READY": {
       if (!eventMatchesNext(state, event.trackId, event.revision)) break;
       next = { ...state, nextTrack: { ...state.nextTrack, status: "ready" } };

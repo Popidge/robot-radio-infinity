@@ -1,4 +1,4 @@
-import type { MusicProvider, MusicStream, TrackSection, TrackSpec, TransitionProvider, TransitionSpec } from "@robot-radio/eleven-shared";
+import type { MusicProvider, MusicStream, MusicStreamMetadata, MusicWordTimestamp, TrackSection, TrackSpec, TransitionProvider, TransitionSpec } from "@robot-radio/eleven-shared";
 import { fixtureSeed } from "../fixtures/waveforms";
 import { CHANNELS, SAMPLE_RATE, createFixtureStream, pcmBytes, responseBytes, type StreamControl } from "./stream-utils";
 
@@ -178,6 +178,130 @@ function waitForRetry(delayMs: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+function wantsDetailedStream(spec: TrackSpec): boolean {
+  return process.env.ELEVENLABS_MUSIC_DETAILED_STREAM !== "false"
+    && !isInstrumental(spec)
+    && Boolean(spec.sections?.some((section) => section.lyrics?.trim()));
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function timestampsFrom(value: unknown): MusicWordTimestamp[] | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const candidate = record.words_timestamps ?? record.word_timestamps ?? record.wordsTimestamps;
+  if (Array.isArray(candidate)) {
+    const timestamps = candidate.flatMap((entry) => {
+      const timestamp = asRecord(entry);
+      const word = timestamp?.word;
+      const startMs = timestamp?.start_ms ?? timestamp?.startMs;
+      const endMs = timestamp?.end_ms ?? timestamp?.endMs;
+      return typeof word === "string" && Number.isFinite(startMs) && Number.isFinite(endMs)
+        ? [{ word, startMs: Number(startMs), endMs: Number(endMs) }]
+        : [];
+    });
+    if (timestamps.length) return timestamps;
+  }
+  for (const nested of [record.data, record.metadata, record.song_metadata]) {
+    const timestamps = timestampsFrom(nested);
+    if (timestamps?.length) return timestamps;
+  }
+  return undefined;
+}
+
+function audioBase64From(value: unknown, eventType: string): string | undefined {
+  if (typeof value === "string") return /audio[_-]?chunk/i.test(eventType) ? value : undefined;
+  const record = asRecord(value);
+  if (!record) return undefined;
+  for (const key of ["audio", "audio_chunk", "audio_base64", "audioChunk"]) {
+    if (typeof record[key] === "string") return record[key] as string;
+  }
+  if (/audio[_-]?chunk/i.test(String(record.type ?? record.event ?? eventType)) && typeof record.data === "string") {
+    return record.data;
+  }
+  for (const nested of [record.data, record.payload]) {
+    const audio = audioBase64From(nested, String(record.type ?? record.event ?? eventType));
+    if (audio) return audio;
+  }
+  return undefined;
+}
+
+function detailedPayload(text: string, eventType: string): { audio?: Uint8Array; metadata?: MusicStreamMetadata } {
+  let value: unknown = text.trim();
+  if (!value) return {};
+  for (let depth = 0; depth < 2 && typeof value === "string"; depth += 1) {
+    try { value = JSON.parse(value) as unknown } catch { break }
+  }
+  const encodedAudio = audioBase64From(value, eventType);
+  const wordTimestamps = timestampsFrom(value);
+  return {
+    audio: encodedAudio ? Buffer.from(encodedAudio, "base64") : undefined,
+    metadata: wordTimestamps?.length ? { wordTimestamps } : undefined
+  };
+}
+
+export async function* detailedResponseBytes(
+  body: ReadableStream<Uint8Array>,
+  onMetadata: (metadata: MusicStreamMetadata) => void,
+  onFinished: () => void
+): AsyncGenerator<Uint8Array> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffered = "";
+  let eventType = "";
+  let dataLines: string[] = [];
+
+  const parse = (text: string, type: string): Uint8Array | undefined => {
+    const payload = detailedPayload(text, type);
+    if (payload.metadata) onMetadata(payload.metadata);
+    return payload.audio;
+  };
+  const flushEvent = (): Uint8Array | undefined => {
+    const audio = dataLines.length ? parse(dataLines.join("\n"), eventType) : undefined;
+    dataLines = [];
+    eventType = "";
+    return audio;
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      buffered += decoder.decode(value, { stream: !done });
+      const lines = buffered.split(/\r?\n/);
+      buffered = done ? "" : lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) {
+          const audio = flushEvent();
+          if (audio?.byteLength) yield audio;
+        } else if (line.startsWith("event:")) {
+          eventType = line.slice(6).trim();
+        } else if (line.startsWith("data:")) {
+          dataLines.push(line.slice(5).trimStart());
+        } else if (!line.startsWith(":")) {
+          const audio = parse(line, "");
+          if (audio?.byteLength) yield audio;
+        }
+      }
+      if (done) {
+        if (buffered.trim()) {
+          const audio = parse(buffered, eventType);
+          if (audio?.byteLength) yield audio;
+        }
+        const audio = flushEvent();
+        if (audio?.byteLength) yield audio;
+        return;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+    onFinished();
+  }
+}
+
 export class ElevenMusicApiProvider implements MusicProvider, TransitionProvider {
   private readonly active = new Map<string, ActiveRequest>();
 
@@ -192,6 +316,7 @@ export class ElevenMusicApiProvider implements MusicProvider, TransitionProvider
     await this.cancel(spec.id);
     const controller = new AbortController();
     const isTransition = "instrumental" in spec;
+    const detailed = !isTransition && wantsDetailedStream(spec);
     const timeout = setTimeout(() => controller.abort(new Error("Eleven Music did not finish within the configured timeout.")), Number(process.env.ELEVENLABS_MUSIC_TIMEOUT_MS ?? 240_000));
     const active: ActiveRequest = { controller, timeout };
     this.active.set(spec.id, active);
@@ -202,13 +327,14 @@ export class ElevenMusicApiProvider implements MusicProvider, TransitionProvider
     try {
       for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
         try {
-          response = await fetch(`${this.baseUrl}/v1/music/stream?output_format=mp3_48000_128`, {
+          response = await fetch(`${this.baseUrl}/v1/music/${detailed ? "detailed/stream" : "stream"}?output_format=mp3_48000_128`, {
             method: "POST",
-            headers: { "content-type": "application/json", "xi-api-key": this.apiKey },
+            headers: { "accept": detailed ? "text/event-stream" : "audio/mpeg", "content-type": "application/json", "xi-api-key": this.apiKey },
             body: JSON.stringify({
               model_id: process.env.ELEVENLABS_MUSIC_MODEL ?? "music_v2",
               composition_plan: isTransition ? transitionPlan(spec) : trackPlan(spec),
-              store_for_inpainting: false
+              store_for_inpainting: false,
+              ...(detailed ? { with_timestamps: true, with_waveform_visual: false } : {})
             }),
             signal: controller.signal
           });
@@ -242,13 +368,23 @@ export class ElevenMusicApiProvider implements MusicProvider, TransitionProvider
       clearTimeout(timeout);
       if (this.active.get(spec.id) === active) this.active.delete(spec.id);
     };
+    const metadataListeners = new Set<(metadata: MusicStreamMetadata) => void>();
+    const emitMetadata = (metadata: MusicStreamMetadata): void => {
+      for (const listener of metadataListeners) listener(metadata);
+    };
     return {
       id: spec.id,
       encoding: "mp3",
       sampleRate: 48_000,
       channels: 2,
       durationMs: spec.durationMs,
-      chunks: responseBytes(response.body, finish)
+      chunks: detailed ? detailedResponseBytes(response.body, emitMetadata, finish) : responseBytes(response.body, finish),
+      subscribeMetadata: detailed
+        ? (listener) => {
+            metadataListeners.add(listener);
+            return () => metadataListeners.delete(listener);
+          }
+        : undefined
     };
   }
 

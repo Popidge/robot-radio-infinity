@@ -6,7 +6,7 @@ function robotMode(state: StationState): "idle" | "thinking" | "listening" | "sp
   if (!state.running) return "idle";
   if (state.dj.speaking) return "speaking";
   if (state.pendingUser && !state.pendingUser.applied) return "listening";
-  if (state.startup?.status === "planning" || state.nextTrack.status === "planning") return "thinking";
+  if (state.startup || ["planning", "generating", "buffering"].includes(state.nextTrack.status) || ["generating", "buffering"].includes(state.transition.status)) return "thinking";
   return "live";
 }
 
@@ -15,12 +15,6 @@ export function RobotDj({ state }: RobotDjProps) {
   return (
     <div className={`dj-avatar-panel is-${mode}`} aria-label={`DJ is ${mode}`}>
       <svg viewBox="0 0 260 220" role="img" aria-hidden="true">
-        <defs>
-          <pattern id="comic-dots" width="10" height="10" patternUnits="userSpaceOnUse">
-            <circle cx="2" cy="2" r="1.8" fill="currentColor" />
-          </pattern>
-        </defs>
-        <path className="dj-dots" d="M0 96h84v124H0z" />
         <path className="dj-aerial" d="M119 45V15" />
         <circle className="dj-aerial-tip" cx="119" cy="12" r="9" />
         <path className="dj-headphones" d="M62 112C62 48 188 48 188 112" />
@@ -41,6 +35,11 @@ export function RobotDj({ state }: RobotDjProps) {
           <rect x="207" y="80" width="13" height="13" />
           <rect x="229" y="61" width="10" height="10" />
           <rect x="246" y="46" width="7" height="7" />
+        </g>
+        <g className="dj-state-meter">
+          <rect x="211" y="188" width="11" height="18" />
+          <rect x="228" y="180" width="11" height="26" />
+          <rect x="245" y="170" width="11" height="36" />
         </g>
       </svg>
     </div>
