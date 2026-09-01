@@ -269,6 +269,7 @@ export interface StationState {
   transition: TransitionState;
   showState: ShowState;
   dj: {
+    muted: boolean;
     speaking: boolean;
     speechId?: string;
     pending?: {
@@ -298,6 +299,7 @@ interface EventBase { at: number }
 export type StationEvent =
   | (EventBase & { type: "START_STATION"; sessionId: string; message: string })
   | (EventBase & { type: "STOP_STATION" })
+  | (EventBase & { type: "SET_DJ_MUTED"; muted: boolean })
   | (EventBase & { type: "INITIAL_INTENT_RECEIVED"; requestId: string; plan: ProducerPlan })
   | (EventBase & { type: "INITIAL_INTENT_FAILED"; requestId: string; error: string })
   | (EventBase & { type: "USER_MESSAGE"; requestId: string; message: string })
@@ -344,6 +346,7 @@ export type StationCommand =
   | { type: "PLAN_CONTINUITY"; input: ContinuityInput }
   | { type: "REPAIR_TRACK_SPEC"; failedTrackId: string; input: TrackRepairInput }
   | { type: "SPEAK"; speechId: string; text: string }
+  | { type: "CANCEL_SPEECH"; speechId: string }
   | { type: "FADE"; from: FadeSource; to: FadeTarget; trackId?: string; transitionId?: string; durationMs: number }
   | { type: "PLAY_TRACK"; trackId: string; durationMs: number }
   | { type: "PLAY_TRANSITION"; transitionId: string; durationMs: number; minimumPlayMs: number }

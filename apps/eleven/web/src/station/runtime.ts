@@ -62,6 +62,9 @@ export class StationRuntime {
     const trimmed = message.trim();
     if (trimmed && this.state.running) this.dispatch(nowEvent({ type: "USER_MESSAGE", requestId: this.nextId("user"), message: trimmed }));
   }
+  setDjMuted(muted: boolean): void {
+    if (this.state.dj.muted !== muted) this.dispatch(nowEvent({ type: "SET_DJ_MUTED", muted }));
+  }
   setSlowGeneration(enabled: boolean): void { this.slowGeneration = enabled }
   isSlowGeneration(): boolean { return this.slowGeneration }
   readSpectrum = (target: Uint8Array<ArrayBuffer>): boolean => this.audio.readSpectrum(target);
@@ -137,6 +140,7 @@ export class StationRuntime {
           return;
         }
         case "SPEAK": this.speak(command.speechId, command.text); return;
+        case "CANCEL_SPEECH": this.cancelSpeech(command.speechId); return;
         case "PLAY_TRACK": this.audio.playTrack(command.trackId, command.durationMs); this.trackStarted(command.trackId); return;
         case "PLAY_TRANSITION": this.playTransition(command.transitionId, command.durationMs, command.minimumPlayMs); return;
         case "FADE":
@@ -329,6 +333,13 @@ export class StationRuntime {
       }
     });
     this.ttsStreams.set(id, stream);
+  }
+
+  private cancelSpeech(id: string): void {
+    this.ttsStreams.get(id)?.close();
+    this.ttsStreams.delete(id);
+    this.audio.restoreAfterSpeech();
+    this.audio.finishTTS(id);
   }
 
   private trackStarted(trackId: string): void {

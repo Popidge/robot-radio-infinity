@@ -12,6 +12,7 @@ interface PlayerProps {
   onStop(): void;
   onTogglePause(): void;
   onMessage(message: string): void;
+  onSetDjMuted(muted: boolean): void;
   readSpectrum(target: Uint8Array<ArrayBuffer>): boolean;
   spectrumBinCount(): number;
 }
@@ -39,13 +40,15 @@ function listenerError(state: StationState): string {
     : "The opening signal hit a problem. Add ?debug=1 to the address for technical detail.";
 }
 
-export function Player({ state, paused, onStart, onStop, onTogglePause, onMessage, readSpectrum, spectrumBinCount }: PlayerProps) {
+export function Player({ state, paused, onStart, onStop, onTogglePause, onMessage, onSetDjMuted, readSpectrum, spectrumBinCount }: PlayerProps) {
   const [message, setMessage] = useState("");
   const [startingVibe, setStartingVibe] = useState("");
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(true);
   const [titleCompact, setTitleCompact] = useState(false);
+  const [lyricsEnabled, setLyricsEnabled] = useState(true);
+  const [visualizerEnabled, setVisualizerEnabled] = useState(true);
   const duration = state.playback.durationMs ?? 0;
   const progress = duration ? Math.min(100, (state.playback.playheadMs / duration) * 100) : 0;
   const latestMessage = state.conversation.at(-1);
@@ -81,15 +84,15 @@ export function Player({ state, paused, onStart, onStop, onTogglePause, onMessag
 
   return (
     <section className={`radio-canvas ${state.running ? "is-running" : "is-idle"} ${paused ? "is-paused" : ""}`} style={visualStyle}>
-      <AudioVisualizer
-        running={state.running && !paused}
-        speaking={state.dj.speaking}
-        bpm={state.playback.bpm}
-        theme={theme}
-        readSpectrum={readSpectrum}
-        spectrumBinCount={spectrumBinCount}
-      />
-      {state.running ? <LyricLayer playback={state.playback} theme={theme} /> : null}
+      {visualizerEnabled ? <AudioVisualizer
+          running={state.running && !paused}
+          speaking={state.dj.speaking}
+          bpm={state.playback.bpm}
+          theme={theme}
+          readSpectrum={readSpectrum}
+          spectrumBinCount={spectrumBinCount}
+        /> : null}
+      {state.running && lyricsEnabled ? <LyricLayer playback={state.playback} theme={theme} /> : null}
 
       <header className="station-stamp">
         <span className="station-wave" aria-hidden="true"><i /><i /><i /><i /><i /></span>
@@ -157,6 +160,11 @@ export function Player({ state, paused, onStart, onStop, onTogglePause, onMessag
           </div>
 
           <div id="control-plane" className={`control-stack ${chatOpen ? "is-chat-open" : ""} ${controlsOpen ? "is-visible" : "is-hidden"}`}>
+            <div className="experience-toggles" role="group" aria-label="Audio and visual options">
+              <button type="button" className={lyricsEnabled ? "is-enabled" : ""} aria-pressed={lyricsEnabled} onClick={() => setLyricsEnabled((enabled) => !enabled)}>Lyrics</button>
+              <button type="button" className={visualizerEnabled ? "is-enabled" : ""} aria-pressed={visualizerEnabled} onClick={() => setVisualizerEnabled((enabled) => !enabled)}>Visualiser</button>
+              <button type="button" className={!state.dj.muted ? "is-enabled" : ""} aria-pressed={!state.dj.muted} onClick={() => onSetDjMuted(!state.dj.muted)}>DJ voice</button>
+            </div>
             {chatOpen ? (
               <div className="chat-panel">
                 <button className="chat-close" onClick={() => setChatOpen(false)} aria-label="Collapse conversation">↓</button>

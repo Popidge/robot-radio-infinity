@@ -378,6 +378,7 @@ describe("ElevenLabs station reducer", () => {
       ...playingState(),
       intentRevision: 1,
       dj: {
+        muted: false,
         speaking: false,
         pending: {
           speechId: "cue-old",
@@ -407,6 +408,7 @@ describe("ElevenLabs station reducer", () => {
         resolution: "conversation"
       },
       dj: {
+        muted: false,
         speaking: false,
         pending: {
           speechId: "cue-buffered-ack",
@@ -440,6 +442,7 @@ describe("ElevenLabs station reducer", () => {
       },
       nextTrack: { status: "ready", trackId: spec.id, revision: 1, spec, bufferedMs: 12_000, generatedMs: 20_000 },
       dj: {
+        muted: false,
         speaking: false,
         pending: { speechId: "cue-tease", text: "The next room has heavier walls.", purpose: "tease", revision: 1, trackId: spec.id }
       }
@@ -467,6 +470,7 @@ describe("ElevenLabs station reducer", () => {
         speechCadence: { ...base.showState.speechCadence, sessionTalkativeness: 0.8 }
       },
       dj: {
+        muted: false,
         speaking: false,
         pending: {
           speechId: "cue-mid-track",
@@ -513,6 +517,7 @@ describe("ElevenLabs station reducer", () => {
         resolution: "conversation"
       },
       dj: {
+        muted: false,
         speaking: false,
         pending: { speechId: "cue-cooldown", text: "Still here.", purpose: "listener_acknowledgement", revision: 1 }
       }
@@ -535,6 +540,7 @@ describe("ElevenLabs station reducer", () => {
         }
       },
       dj: {
+        muted: false,
         speaking: false,
         pending: { speechId: "cue-observation", text: "Notice how the pulse keeps folding.", purpose: "mid_track_observation", revision: 1 }
       }
@@ -544,6 +550,46 @@ describe("ElevenLabs station reducer", () => {
     }, 100_000));
     expect(repeated.commands).toEqual([]);
     expect(repeated.state.dj.pending).toBeUndefined();
+  });
+
+  it("keeps a muted presenter in text chat without requesting TTS", () => {
+    const text = "I’ll keep shaping the night from here.";
+    const state: StationState = {
+      ...playingState(),
+      dj: {
+        muted: false,
+        speaking: false,
+        pending: { speechId: "cue-text-only", text, purpose: "mid_track_observation", revision: 1 }
+      }
+    };
+
+    const muted = reduce(state, event({ type: "SET_DJ_MUTED", muted: true }, 12_000));
+
+    expect(muted.commands).toEqual([]);
+    expect(muted.state.dj).toMatchObject({ muted: true, speaking: false });
+    expect(muted.state.dj.pending).toBeUndefined();
+    expect(muted.state.recentDjLines.at(-1)).toBe(text);
+    expect(muted.state.conversation.at(-1)).toMatchObject({ role: "dj", text });
+    expect(muted.state.showState.speechCadence.cuesSpoken).toBe(0);
+  });
+
+  it("cancels active speech, ignores its late start, and preserves mute across sessions", () => {
+    const speaking: StationState = {
+      ...playingState(),
+      dj: { muted: false, speaking: true, speechId: "cue-active" }
+    };
+
+    const muted = reduce(speaking, event({ type: "SET_DJ_MUTED", muted: true }));
+    expect(muted.commands).toEqual([{ type: "CANCEL_SPEECH", speechId: "cue-active" }]);
+    expect(muted.state.dj).toMatchObject({ muted: true, speaking: false });
+    expect(muted.state.dj.speechId).toBeUndefined();
+
+    const late = reduce(muted.state, event({ type: "TTS_STARTED", speechId: "cue-active" }));
+    expect(late.state.dj).toMatchObject({ muted: true, speaking: false });
+
+    const stopped = reduce(late.state, event({ type: "STOP_STATION" }));
+    const restarted = reduce(stopped.state, event({ type: "START_STATION", sessionId: "muted-session", message: "Keep it quiet." }));
+    expect(restarted.state.dj.muted).toBe(true);
   });
 
   it("bounds producer memory without allowing a plan to rewrite presenter identity", () => {

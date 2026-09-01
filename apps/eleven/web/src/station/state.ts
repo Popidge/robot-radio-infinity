@@ -36,7 +36,7 @@ export const DEFAULT_SHOW_STATE: ShowState = {
   }
 };
 
-export function createInitialState(): StationState {
+export function createInitialState(djMuted = false): StationState {
   return {
     phase: "idle",
     running: false,
@@ -46,7 +46,7 @@ export function createInitialState(): StationState {
     intentRevision: 0,
     nextTrack: { status: "none", bufferedMs: 0, generatedMs: 0 },
     transition: { status: "none", bufferedMs: 0, generatedMs: 0 },
-    dj: { speaking: false },
+    dj: { muted: djMuted, speaking: false },
     recentEvents: [],
     recentCommands: [],
     recentTracks: [],

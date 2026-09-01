@@ -466,6 +466,17 @@ function advanceCue(state: StationState, at: number): Reduction | null {
   if (cue.revision !== state.intentRevision || !subjectIsCurrent) {
     return { state: { ...state, dj: { ...state.dj, pending: undefined } }, commands: [] };
   }
+  if (state.dj.muted) {
+    return {
+      state: {
+        ...state,
+        dj: { ...state.dj, pending: undefined },
+        recentDjLines: append(state.recentDjLines, cue.text, 12),
+        conversation: append(state.conversation, { role: "dj", text: cue.text, at }, 24)
+      },
+      commands: []
+    };
+  }
 
   const cadence = state.showState.speechCadence;
   const cooldownActive = cadence.lastCueAt !== null && at - cadence.lastCueAt < cadence.cooldownMs;
@@ -490,7 +501,7 @@ function advanceCue(state: StationState, at: number): Reduction | null {
           cuesSpoken: cadence.cuesSpoken + 1
         }
       },
-      dj: { speaking: true, speechId: cue.speechId }
+      dj: { ...state.dj, speaking: true, speechId: cue.speechId, pending: undefined }
     },
     commands: [{ type: "SPEAK", speechId: cue.speechId, text: cue.text }]
   };
@@ -571,7 +582,7 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
 
   switch (event.type) {
     case "START_STATION": {
-      const fresh = createInitialState();
+      const fresh = createInitialState(state.dj.muted);
       next = {
         ...fresh,
         running: true,
@@ -584,9 +595,23 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
       break;
     }
     case "STOP_STATION":
-      next = createInitialState();
+      next = createInitialState(state.dj.muted);
       commands = [{ type: "STOP_ALL" }];
       break;
+    case "SET_DJ_MUTED": {
+      const speechId = state.dj.speechId;
+      next = {
+        ...state,
+        dj: {
+          ...state.dj,
+          muted: event.muted,
+          speaking: event.muted ? false : state.dj.speaking,
+          speechId: event.muted ? undefined : state.dj.speechId
+        }
+      };
+      if (event.muted && speechId) commands = [{ type: "CANCEL_SPEECH", speechId }];
+      break;
+    }
     case "INITIAL_INTENT_RECEIVED": {
       if (state.startup?.requestId !== event.requestId) break;
       const direction = event.plan.musicalDirection;
@@ -767,7 +792,7 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
       }
       break;
     case "TTS_STARTED":
-      if (state.dj.speechId && state.dj.speechId !== event.speechId) break;
+      if (state.dj.muted || state.dj.speechId !== event.speechId) break;
       next = { ...state, dj: { ...state.dj, speaking: true, speechId: event.speechId } };
       break;
     case "TTS_FINISHED":

@@ -44,6 +44,7 @@ export default function App() {
         onStop={stop}
         onTogglePause={() => void togglePaused()}
         onMessage={(message) => runtime.sendUserMessage(message)}
+        onSetDjMuted={(muted) => runtime.setDjMuted(muted)}
         readSpectrum={runtime.readSpectrum}
         spectrumBinCount={runtime.spectrumBinCount}
       />
