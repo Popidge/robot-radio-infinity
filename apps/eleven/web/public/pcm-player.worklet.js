@@ -1,6 +1,5 @@
-// This file must remain valid JavaScript: Vite loads its raw source into an
-// AudioWorklet Blob so it works in both local builds and hosted previews.
-// @ts-nocheck
+// This file is a same-origin browser asset. Keep it valid plain JavaScript so
+// the AudioWorklet can load it under the production Content Security Policy.
 
 class PcmRingBuffer {
   constructor(capacityFrames, channels) {

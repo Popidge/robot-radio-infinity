@@ -1,5 +1,3 @@
-import pcmPlayerWorkletCode from "./pcm-player.worklet.ts?raw";
-
 type SourceKind = "track" | "transition" | "tts" | "cart";
 
 interface SourceMetrics {
@@ -30,8 +28,10 @@ export interface PlaybackClock {
 }
 
 const TRACK_FADE_MS = 2_500;
+export const PCM_PLAYER_WORKLET_PATH = "/pcm-player.worklet.js";
 
 export class AudioEngine {
+  private initialization: Promise<void> | null = null;
   private context: AudioContext | null = null;
   private masterBus: GainNode | null = null;
   private musicBus: GainNode | null = null;
@@ -50,30 +50,37 @@ export class AudioEngine {
   private trackStartedAt = 0;
 
   async initialize(): Promise<void> {
-    if (this.context) {
-      await this.context.resume();
-      return;
-    }
-    this.context = new AudioContext({ sampleRate: 48_000, latencyHint: "playback" });
-    const workletBlob = new Blob([pcmPlayerWorkletCode], { type: "application/javascript" });
-    const workletUrl = URL.createObjectURL(workletBlob);
+    this.initialization ??= this.initializeContext();
     try {
-      await this.context.audioWorklet.addModule(workletUrl);
-    } finally {
-      URL.revokeObjectURL(workletUrl);
+      await this.initialization;
+      await this.context?.resume();
+    } catch (error) {
+      this.initialization = null;
+      throw error;
     }
+  }
 
-    this.masterBus = this.context.createGain();
-    this.musicBus = this.context.createGain();
-    this.currentTrackBus = this.context.createGain();
-    this.incomingTrackBus = this.context.createGain();
-    this.transitionBus = this.context.createGain();
-    this.ttsBus = this.context.createGain();
-    this.cartBus = this.context.createGain();
-    this.analyser = this.context.createAnalyser();
+  private async initializeContext(): Promise<void> {
+    const context = new AudioContext({ sampleRate: 48_000, latencyHint: "playback" });
+    try {
+      await context.audioWorklet.addModule(PCM_PLAYER_WORKLET_PATH);
+    } catch (error) {
+      await context.close();
+      throw error;
+    }
+    this.context = context;
+
+    this.masterBus = context.createGain();
+    this.musicBus = context.createGain();
+    this.currentTrackBus = context.createGain();
+    this.incomingTrackBus = context.createGain();
+    this.transitionBus = context.createGain();
+    this.ttsBus = context.createGain();
+    this.cartBus = context.createGain();
+    this.analyser = context.createAnalyser();
     this.analyser.fftSize = 256;
     this.analyser.smoothingTimeConstant = 0.82;
-    const compressor = this.context.createDynamicsCompressor();
+    const compressor = context.createDynamicsCompressor();
     compressor.threshold.value = -6;
     compressor.knee.value = 8;
     compressor.ratio.value = 8;
@@ -88,9 +95,9 @@ export class AudioEngine {
     this.cartBus.connect(this.masterBus);
     this.masterBus.connect(this.analyser);
     this.analyser.connect(compressor);
-    compressor.connect(this.context.destination);
+    compressor.connect(context.destination);
     this.masterBus.gain.value = 0.82;
-    await this.context.resume();
+    await context.resume();
   }
 
   private makeSource(id: string, kind: SourceKind, durationMs: number | null, onEnded?: () => void): PcmSource {
@@ -352,6 +359,7 @@ export class AudioEngine {
     this.currentCart = null;
     this.analyser = null;
     const context = this.context;
+    this.initialization = null;
     this.context = null;
     if (context) await context.close();
   }
