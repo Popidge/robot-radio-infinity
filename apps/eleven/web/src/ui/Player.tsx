@@ -42,6 +42,7 @@ function listenerError(state: StationState): string {
 export function Player({ state, paused, onStart, onStop, onTogglePause, onMessage, readSpectrum, spectrumBinCount }: PlayerProps) {
   const [message, setMessage] = useState("");
   const [startingVibe, setStartingVibe] = useState("");
+  const [onboardingStep, setOnboardingStep] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(true);
   const [titleCompact, setTitleCompact] = useState(false);
@@ -98,19 +99,46 @@ export function Player({ state, paused, onStart, onStop, onTogglePause, onMessag
       <p className="broadcast-state sr-only" aria-live="polite">{phaseLabel(state, paused)}</p>
 
       {!state.running ? (
-        <div className="welcome-panel comic-panel">
-          <h1>What do you want to hear today?</h1>
-          <form className="vibe-form" onSubmit={start}>
-            <label className="sr-only" htmlFor="starting-vibe">What&apos;s your vibe today?</label>
-            <input
-              id="starting-vibe"
-              value={startingVibe}
-              onChange={(event) => setStartingVibe(event.target.value)}
-              placeholder="Warm psychedelic soul for a rainy Sunday…"
-              autoFocus
-            />
-            <button disabled={!startingVibe.trim()} aria-label="Start listening">→</button>
-          </form>
+        <div className={`welcome-panel comic-panel is-step-${onboardingStep}`}>
+          <div className="onboarding-progress" aria-label={`Introduction step ${onboardingStep + 1} of 3`}>
+            {[0, 1, 2].map((step) => <i className={step <= onboardingStep ? "is-complete" : ""} key={step} />)}
+          </div>
+          <div className="onboarding-copy" key={onboardingStep} aria-live="polite">
+            {onboardingStep === 0 ? (
+              <>
+                <h1>Your own infinite radio station.</h1>
+                <p>Every track is made live for you. Nothing is prerecorded, and nobody else will hear the same show.</p>
+                <button className="onboarding-next" type="button" onClick={() => setOnboardingStep(1)}>Meet your DJ <span aria-hidden="true">→</span></button>
+              </>
+            ) : null}
+            {onboardingStep === 1 ? (
+              <>
+                <h1>The DJ is listening.</h1>
+                <p>Ask for whatever you want next. Say “right now” if you want it sooner. Or just chat—the DJ responds while it produces and presents your personal, never-heard-before station.</p>
+                <div className="onboarding-actions">
+                  <button className="onboarding-back" type="button" onClick={() => setOnboardingStep(0)} aria-label="Previous introduction step">←</button>
+                  <button className="onboarding-next" type="button" onClick={() => setOnboardingStep(2)}>Make your station <span aria-hidden="true">→</span></button>
+                </div>
+              </>
+            ) : null}
+            {onboardingStep === 2 ? (
+              <>
+                <h1>Send a prompt and create a whole radio station that never existed before</h1>
+                <form className="vibe-form has-back" onSubmit={start}>
+                  <button className="onboarding-back" type="button" onClick={() => setOnboardingStep(1)} aria-label="Previous introduction step">←</button>
+                  <label className="sr-only" htmlFor="starting-vibe">What&apos;s your vibe today?</label>
+                  <input
+                    id="starting-vibe"
+                    value={startingVibe}
+                    onChange={(event) => setStartingVibe(event.target.value)}
+                    placeholder="Warm psychedelic soul for a rainy Sunday…"
+                    autoFocus
+                  />
+                  <button disabled={!startingVibe.trim()} aria-label="Start listening">→</button>
+                </form>
+              </>
+            ) : null}
+          </div>
         </div>
       ) : (
         <>
