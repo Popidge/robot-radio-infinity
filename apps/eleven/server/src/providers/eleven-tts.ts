@@ -2,6 +2,8 @@ import type { AudioStream, TTSProvider } from "@robot-radio/eleven-shared";
 import { fixtureSeed } from "../fixtures/waveforms";
 import { CHANNELS, SAMPLE_RATE, createFixtureStream, pcmBytes, responseBytes, type StreamControl } from "./stream-utils";
 
+export const DEFAULT_ELEVENLABS_VOICE_ID = "st7NwhTPEzqo2riw7qWC";
+
 async function errorPayload(response: Response): Promise<string> {
   const text = (await response.text()).slice(0, 8_000);
   try { return JSON.stringify(JSON.parse(text)) } catch { return text }
@@ -11,7 +13,7 @@ export class ElevenTTSApiProvider implements TTSProvider {
   private readonly active = new Map<string, { controller: AbortController; timeout: ReturnType<typeof setTimeout> }>();
   constructor(
     private readonly apiKey: string,
-    private readonly voiceId = process.env.ELEVENLABS_VOICE_ID ?? "JBFqnCBsd6RMkjVDRZzb",
+    private readonly voiceId = process.env.ELEVENLABS_VOICE_ID ?? DEFAULT_ELEVENLABS_VOICE_ID,
     private readonly baseUrl = process.env.ELEVENLABS_BASE_URL ?? "https://api.elevenlabs.io"
   ) {}
 

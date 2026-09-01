@@ -60,7 +60,7 @@ ELEVENLABS_MUSIC_MODEL=music_v2
 ELEVENLABS_TTS_MODEL=eleven_flash_v2_5
 ```
 
-Set `ELEVENLABS_VOICE_ID` to select the DJ voice. The template contains a premade voice ID as the default.
+The default DJ voice is Blondie, a female London voice with a professional radio-announcer tone. Set `ELEVENLABS_VOICE_ID` to select another voice.
 
 You can select one adapter at a time:
 
