@@ -1,0 +1,16 @@
+{
+  "model_id": "music_v2",
+  "with_timestamps": true,
+  "with_waveform_visual": true,
+  "composition_plan": {
+    "chunks": [
+      {
+        "text": "[Station sting]\n{instrumental, no vocals, three rising synthetic notes, one bold drum punctuation, exact clean stop}",
+        "duration_ms": 5000,
+        "positive_styles": ["instrumental station sting", "bright synthetic print colour energy", "three-note original sonic logo", "bold electronic drum punctuation", "modern radio imaging", "wide polished mix", "precise clean ending"],
+        "negative_styles": ["vocals", "spoken words", "long intro", "fade out", "reverb tail", "ambient bed"],
+        "context_adherence": "high"
+      }
+    ]
+  }
+}

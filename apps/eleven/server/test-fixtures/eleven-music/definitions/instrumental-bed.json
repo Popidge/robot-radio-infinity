@@ -1,0 +1,30 @@
+{
+  "model_id": "music_v2",
+  "with_timestamps": true,
+  "with_waveform_visual": true,
+  "composition_plan": {
+    "chunks": [
+      {
+        "text": "[Presenter intro]\n{instrumental, no vocals, sparse presenter bed}",
+        "duration_ms": 8000,
+        "positive_styles": ["instrumental future funk", "118 BPM", "D minor", "dry punchy drums", "muted rhythm guitar", "simple bass pulse", "sparse presenter bed", "clean radio production"],
+        "negative_styles": ["vocals", "spoken words", "lead solo", "dense pads"],
+        "context_adherence": "high"
+      },
+      {
+        "text": "[Main development]\n{instrumental, no vocals, clipped synthesizer hooks and rhythmic counterpoint}",
+        "duration_ms": 18000,
+        "positive_styles": ["instrumental", "clipped synthesizer hook", "elastic arrangement", "dancefloor energy", "clear section development"],
+        "negative_styles": ["vocals", "spoken words", "cinematic wash"],
+        "context_adherence": "high"
+      },
+      {
+        "text": "[Mixable outro]\n{instrumental, no vocals, drums and bass only, clean bar-line ending}",
+        "duration_ms": 10000,
+        "positive_styles": ["instrumental DJ outro", "drums and bass bed", "reduced density", "clean bar-line ending", "transition friendly"],
+        "negative_styles": ["vocals", "lead melody", "abrupt truncation", "long fade"],
+        "context_adherence": "high"
+      }
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "model_id": "music_v2",
+  "with_timestamps": true,
+  "with_waveform_visual": true,
+  "composition_plan": {
+    "chunks": [
+      {
+        "text": "[Immediate verse]\nNo waiting for the downbeat, I arrive inside the sound\nEvery second keeps on turning while the signal circles round\nIf you want another colour then the walls begin to move\nI can hear the future forming in the pressure of the groove",
+        "duration_ms": 12000,
+        "positive_styles": ["fast articulate male lead vocal from the first beat", "restless electro post-punk", "132 BPM", "F sharp minor", "angular bass guitar", "tight live drums", "dry urgent vocal", "dense arrangement"],
+        "negative_styles": ["instrumental intro", "slow vocal pickup", "long reverb"],
+        "context_adherence": "high"
+      },
+      {
+        "text": "[Dense chorus]\nKeep it moving, keep it bright\nChange the station every night\nKeep it moving, answer back\nPull the future through the track",
+        "duration_ms": 12000,
+        "positive_styles": ["continuous male chorus vocal", "stacked responses", "full drums", "distorted synthesizers", "high energy"],
+        "negative_styles": ["instrumental gap", "breakdown", "fade"],
+        "context_adherence": "high"
+      },
+      {
+        "text": "[Clean instrumental break]\n{instrumental, no vocals, exposed drums and bass with one clipped synthesizer figure}",
+        "duration_ms": 6000,
+        "positive_styles": ["fully instrumental", "clean speech window", "drums and bass", "clipped synthesizer", "stable dynamics"],
+        "negative_styles": ["vocals", "shouts", "spoken words", "silence"],
+        "context_adherence": "high"
+      },
+      {
+        "text": "[Vocal cold ending]\nOne more signal, one last light\nCut the circuit—end the night",
+        "duration_ms": 6000,
+        "positive_styles": ["male lead vocal", "precise final phrase", "full-band cold ending", "abrupt resolved stop"],
+        "negative_styles": ["instrumental outro", "fade out", "reverb tail", "ad libs"],
+        "context_adherence": "high"
+      }
+    ]
+  }
+}

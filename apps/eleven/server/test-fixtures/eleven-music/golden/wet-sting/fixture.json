@@ -1,0 +1,239 @@
+{
+  "schemaVersion": 1,
+  "id": "wet-sting",
+  "capturedAt": "2026-09-01T03:02:09.801Z",
+  "provider": "elevenlabs",
+  "endpoint": "/v1/music/detailed/stream",
+  "modelId": "music_v2",
+  "outputFormat": "mp3_48000_128",
+  "requestedDurationMs": 5000,
+  "request": {
+    "model_id": "music_v2",
+    "with_timestamps": true,
+    "with_waveform_visual": true,
+    "composition_plan": {
+      "chunks": [
+        {
+          "text": "[Station sting]\n{instrumental, no vocals, three rising synthetic notes, one bold drum punctuation, exact clean stop}",
+          "duration_ms": 5000,
+          "positive_styles": [
+            "instrumental station sting",
+            "bright synthetic print colour energy",
+            "three-note original sonic logo",
+            "bold electronic drum punctuation",
+            "modern radio imaging",
+            "wide polished mix",
+            "precise clean ending"
+          ],
+          "negative_styles": [
+            "vocals",
+            "spoken words",
+            "long intro",
+            "fade out",
+            "reverb tail",
+            "ambient bed"
+          ],
+          "context_adherence": "high"
+        }
+      ]
+    }
+  },
+  "response": {
+    "songId": "v5yMUTfNJx2Ul3ooeaGn",
+    "requestId": null,
+    "traceId": "c7f9ebedb079471a8ceeb7eedc62bc34",
+    "contentType": "text/event-stream; charset=utf-8",
+    "events": [
+      {
+        "sequence": 1,
+        "type": "audio_chunk",
+        "payload": {
+          "audio_base64_capture": {
+            "omitted": true,
+            "bytes": 80685
+          },
+          "chunk": {
+            "text": "[Station sting]\n{instrumental, no vocals, three rising synthetic notes, one bold drum punctuation, exact clean stop}",
+            "duration_ms": 5000,
+            "positive_styles": [
+              "instrumental station sting",
+              "bright synthetic print colour energy",
+              "three-note original sonic logo",
+              "bold electronic drum punctuation",
+              "modern radio imaging",
+              "wide polished mix",
+              "precise clean ending"
+            ],
+            "negative_styles": [
+              "vocals",
+              "spoken words",
+              "long intro",
+              "fade out",
+              "reverb tail",
+              "ambient bed"
+            ],
+            "context_adherence": "high",
+            "conditioning_ref": null,
+            "condition_strength": null
+          },
+          "content_type": "audio/mpeg",
+          "index": 0,
+          "words_timestamps": [
+            {
+              "word": "{instrumental,",
+              "start_ms": 340,
+              "end_ms": 1139
+            },
+            {
+              "word": "no",
+              "start_ms": 1120,
+              "end_ms": 1139
+            },
+            {
+              "word": "vocals,",
+              "start_ms": 1179,
+              "end_ms": 2519
+            },
+            {
+              "word": "three",
+              "start_ms": 2779,
+              "end_ms": 4059
+            },
+            {
+              "word": "rising",
+              "start_ms": 4039,
+              "end_ms": 4119
+            },
+            {
+              "word": "synthetic",
+              "start_ms": 4139,
+              "end_ms": 4219
+            },
+            {
+              "word": "notes,",
+              "start_ms": 4199,
+              "end_ms": 4219
+            },
+            {
+              "word": "one",
+              "start_ms": 4199,
+              "end_ms": 4219
+            },
+            {
+              "word": "bold",
+              "start_ms": 4199,
+              "end_ms": 4219
+            },
+            {
+              "word": "drum",
+              "start_ms": 4199,
+              "end_ms": 4219
+            },
+            {
+              "word": "punctuation,",
+              "start_ms": 4199,
+              "end_ms": 4299
+            },
+            {
+              "word": "exact",
+              "start_ms": 4279,
+              "end_ms": 4299
+            },
+            {
+              "word": "clean",
+              "start_ms": 4279,
+              "end_ms": 4299
+            },
+            {
+              "word": "stop}",
+              "start_ms": 4400,
+              "end_ms": 4859
+            }
+          ],
+          "waveform_visual": [
+            -76,
+            -139,
+            -259,
+            343,
+            731,
+            -615,
+            587,
+            326,
+            201,
+            173,
+            105,
+            -78,
+            -52,
+            31,
+            -17,
+            -10,
+            -5,
+            4,
+            -1,
+            0
+          ]
+        },
+        "audioBytes": 80685
+      },
+      {
+        "sequence": 2,
+        "type": "composition_plan",
+        "payload": {
+          "chunks": [
+            {
+              "text": "[Station sting]\n{instrumental, no vocals, three rising synthetic notes, one bold drum punctuation, exact clean stop}",
+              "duration_ms": 5000,
+              "positive_styles": [
+                "instrumental station sting",
+                "bright synthetic print colour energy",
+                "three-note original sonic logo",
+                "bold electronic drum punctuation",
+                "modern radio imaging",
+                "wide polished mix",
+                "precise clean ending"
+              ],
+              "negative_styles": [
+                "vocals",
+                "spoken words",
+                "long intro",
+                "fade out",
+                "reverb tail",
+                "ambient bed"
+              ],
+              "context_adherence": "high",
+              "conditioning_ref": null,
+              "condition_strength": null
+            }
+          ]
+        },
+        "audioBytes": 0
+      },
+      {
+        "sequence": 3,
+        "type": "song_metadata",
+        "payload": {
+          "title": null,
+          "description": null,
+          "genres": [],
+          "languages": [],
+          "is_explicit": null
+        },
+        "audioBytes": 0
+      },
+      {
+        "sequence": 4,
+        "type": "done",
+        "payload": {
+          "audio_chunk_count": 1,
+          "song_id": "v5yMUTfNJx2Ul3ooeaGn"
+        },
+        "audioBytes": 0
+      }
+    ]
+  },
+  "audio": {
+    "file": "audio.mp3",
+    "bytes": 80685,
+    "sha256": "1dd1ec8ec14f9d249db4002fa7b85875fb2a1672c097577b5ebf143be2c21041"
+  }
+}

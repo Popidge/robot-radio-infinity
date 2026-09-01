@@ -1,0 +1,971 @@
+{
+  "schemaVersion": 1,
+  "id": "vocal-ramp",
+  "capturedAt": "2026-09-01T03:02:22.160Z",
+  "provider": "elevenlabs",
+  "endpoint": "/v1/music/detailed/stream",
+  "modelId": "music_v2",
+  "outputFormat": "mp3_48000_128",
+  "requestedDurationMs": 45000,
+  "request": {
+    "model_id": "music_v2",
+    "with_timestamps": true,
+    "with_waveform_visual": true,
+    "composition_plan": {
+      "chunks": [
+        {
+          "text": "[Instrumental intro]\n{instrumental, no vocals, clear eight-second presenter ramp}",
+          "duration_ms": 8000,
+          "positive_styles": [
+            "original neon soul",
+            "112 BPM",
+            "A minor",
+            "warm electric piano",
+            "tight electronic drums",
+            "clean instrumental intro",
+            "sparse radio bed",
+            "polished stereo mix"
+          ],
+          "negative_styles": [
+            "vocals",
+            "spoken words",
+            "crowd noise",
+            "long reverb tail"
+          ],
+          "context_adherence": "high"
+        },
+        {
+          "text": "[Verse]\nStreetlights draw a silver line\nWe tune the night and make it mine\nEvery signal starts to glow\nTell me where you want to go",
+          "duration_ms": 14000,
+          "positive_styles": [
+            "clear soulful female lead vocal",
+            "conversational phrasing",
+            "elastic bass",
+            "warm electric piano",
+            "restrained electronic drums"
+          ],
+          "negative_styles": [
+            "spoken word",
+            "vocal ad libs over the next section"
+          ],
+          "context_adherence": "high"
+        },
+        {
+          "text": "[Instrumental break]\n{instrumental, no vocals, clean lower-density rhythm bed}",
+          "duration_ms": 8000,
+          "positive_styles": [
+            "fully instrumental",
+            "clean radio bed",
+            "electric piano motif",
+            "reduced density",
+            "stable pulse"
+          ],
+          "negative_styles": [
+            "vocals",
+            "spoken words",
+            "dramatic breakdown",
+            "silence"
+          ],
+          "context_adherence": "high"
+        },
+        {
+          "text": "[Chorus]\nTurn the dial and let it run\nA station made for only one\nTurn the dial, the night is ours\nWe are broadcasting the stars",
+          "duration_ms": 10000,
+          "positive_styles": [
+            "bright soulful female chorus",
+            "memorable original hook",
+            "full warm harmony",
+            "driving but controlled drums"
+          ],
+          "negative_styles": [
+            "spoken word",
+            "extended vocal run"
+          ],
+          "context_adherence": "high"
+        },
+        {
+          "text": "[Cold instrumental outro]\n{instrumental, no vocals, one precise resolved band hit}",
+          "duration_ms": 5000,
+          "positive_styles": [
+            "instrumental outro",
+            "reduced density",
+            "precise cold ending",
+            "resolved final hit",
+            "DJ-friendly"
+          ],
+          "negative_styles": [
+            "vocals",
+            "fade out",
+            "reverb tail",
+            "silence before ending"
+          ],
+          "context_adherence": "high"
+        }
+      ]
+    }
+  },
+  "response": {
+    "songId": "8G97MAZ0WwKq2ehucT3X",
+    "requestId": null,
+    "traceId": "85ba06950d4e0e507e598b6dcb409d8f",
+    "contentType": "text/event-stream; charset=utf-8",
+    "events": [
+      {
+        "sequence": 1,
+        "type": "audio_chunk",
+        "payload": {
+          "audio_base64_capture": {
+            "omitted": true,
+            "bytes": 94893
+          },
+          "chunk": {
+            "text": "[Instrumental intro]\n{instrumental, no vocals, clear eight-second presenter ramp}",
+            "duration_ms": 8000,
+            "positive_styles": [
+              "original neon soul",
+              "112 BPM",
+              "A minor",
+              "warm electric piano",
+              "tight electronic drums",
+              "clean instrumental intro",
+              "sparse radio bed",
+              "polished stereo mix"
+            ],
+            "negative_styles": [
+              "vocals",
+              "spoken words",
+              "crowd noise",
+              "long reverb tail"
+            ],
+            "context_adherence": "high",
+            "conditioning_ref": null,
+            "condition_strength": null
+          },
+          "content_type": "audio/mpeg",
+          "index": 0,
+          "words_timestamps": [
+            {
+              "word": "{instrumental,",
+              "start_ms": 99,
+              "end_ms": 119
+            },
+            {
+              "word": "no",
+              "start_ms": 99,
+              "end_ms": 239
+            },
+            {
+              "word": "vocals,",
+              "start_ms": 239,
+              "end_ms": 340
+            },
+            {
+              "word": "clear",
+              "start_ms": 359,
+              "end_ms": 1879
+            },
+            {
+              "word": "eight-second",
+              "start_ms": 2399,
+              "end_ms": 4639
+            },
+            {
+              "word": "presenter",
+              "start_ms": 4619,
+              "end_ms": 6720
+            },
+            {
+              "word": "ramp}",
+              "start_ms": 7339,
+              "end_ms": 7599
+            }
+          ],
+          "waveform_visual": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "audioBytes": 94893
+      },
+      {
+        "sequence": 2,
+        "type": "composition_plan",
+        "payload": {
+          "chunks": [
+            {
+              "text": "[Instrumental intro]\n{instrumental, no vocals, clear eight-second presenter ramp}",
+              "duration_ms": 8000,
+              "positive_styles": [
+                "original neon soul",
+                "112 BPM",
+                "A minor",
+                "warm electric piano",
+                "tight electronic drums",
+                "clean instrumental intro",
+                "sparse radio bed",
+                "polished stereo mix"
+              ],
+              "negative_styles": [
+                "vocals",
+                "spoken words",
+                "crowd noise",
+                "long reverb tail"
+              ],
+              "context_adherence": "high",
+              "conditioning_ref": null,
+              "condition_strength": null
+            },
+            {
+              "text": "[Verse]\nStreetlights draw a silver line\nWe tune the night and make it mine\nEvery signal starts to glow\nTell me where you want to go",
+              "duration_ms": 14000,
+              "positive_styles": [
+                "clear soulful female lead vocal",
+                "conversational phrasing",
+                "elastic bass",
+                "warm electric piano",
+                "restrained electronic drums"
+              ],
+              "negative_styles": [
+                "spoken word",
+                "vocal ad libs over the next section"
+              ],
+              "context_adherence": "high",
+              "conditioning_ref": null,
+              "condition_strength": null
+            },
+            {
+              "text": "[Instrumental break]\n{instrumental, no vocals, clean lower-density rhythm bed}",
+              "duration_ms": 8000,
+              "positive_styles": [
+                "fully instrumental",
+                "clean radio bed",
+                "electric piano motif",
+                "reduced density",
+                "stable pulse"
+              ],
+              "negative_styles": [
+                "vocals",
+                "spoken words",
+                "dramatic breakdown",
+                "silence"
+              ],
+              "context_adherence": "high",
+              "conditioning_ref": null,
+              "condition_strength": null
+            },
+            {
+              "text": "[Chorus]\nTurn the dial and let it run\nA station made for only one\nTurn the dial, the night is ours\nWe are broadcasting the stars",
+              "duration_ms": 10000,
+              "positive_styles": [
+                "bright soulful female chorus",
+                "memorable original hook",
+                "full warm harmony",
+                "driving but controlled drums"
+              ],
+              "negative_styles": [
+                "spoken word",
+                "extended vocal run"
+              ],
+              "context_adherence": "high",
+              "conditioning_ref": null,
+              "condition_strength": null
+            },
+            {
+              "text": "[Cold instrumental outro]\n{instrumental, no vocals, one precise resolved band hit}",
+              "duration_ms": 5000,
+              "positive_styles": [
+                "instrumental outro",
+                "reduced density",
+                "precise cold ending",
+                "resolved final hit",
+                "DJ-friendly"
+              ],
+              "negative_styles": [
+                "vocals",
+                "fade out",
+                "reverb tail",
+                "silence before ending"
+              ],
+              "context_adherence": "high",
+              "conditioning_ref": null,
+              "condition_strength": null
+            }
+          ]
+        },
+        "audioBytes": 0
+      },
+      {
+        "sequence": 3,
+        "type": "song_metadata",
+        "payload": {
+          "title": null,
+          "description": null,
+          "genres": [],
+          "languages": [],
+          "is_explicit": null
+        },
+        "audioBytes": 0
+      },
+      {
+        "sequence": 4,
+        "type": "audio_chunk",
+        "payload": {
+          "audio_base64_capture": {
+            "omitted": true,
+            "bytes": 223872
+          },
+          "chunk": {
+            "text": "[Verse]\nStreetlights draw a silver line\nWe tune the night and make it mine\nEvery signal starts to glow\nTell me where you want to go",
+            "duration_ms": 14000,
+            "positive_styles": [
+              "clear soulful female lead vocal",
+              "conversational phrasing",
+              "elastic bass",
+              "warm electric piano",
+              "restrained electronic drums"
+            ],
+            "negative_styles": [
+              "spoken word",
+              "vocal ad libs over the next section"
+            ],
+            "context_adherence": "high",
+            "conditioning_ref": null,
+            "condition_strength": null
+          },
+          "content_type": "audio/mpeg",
+          "index": 1,
+          "words_timestamps": [
+            {
+              "word": "Streetlights",
+              "start_ms": 9120,
+              "end_ms": 9759
+            },
+            {
+              "word": "draw",
+              "start_ms": 9779,
+              "end_ms": 10059
+            },
+            {
+              "word": "a",
+              "start_ms": 10099,
+              "end_ms": 10240
+            },
+            {
+              "word": "silver",
+              "start_ms": 10299,
+              "end_ms": 10779
+            },
+            {
+              "word": "line",
+              "start_ms": 10859,
+              "end_ms": 11899
+            },
+            {
+              "word": "We",
+              "start_ms": 12239,
+              "end_ms": 12439
+            },
+            {
+              "word": "tune",
+              "start_ms": 12480,
+              "end_ms": 12759
+            },
+            {
+              "word": "the",
+              "start_ms": 12759,
+              "end_ms": 12859
+            },
+            {
+              "word": "night",
+              "start_ms": 12940,
+              "end_ms": 13339
+            },
+            {
+              "word": "and",
+              "start_ms": 13359,
+              "end_ms": 13519
+            },
+            {
+              "word": "make",
+              "start_ms": 13599,
+              "end_ms": 13859
+            },
+            {
+              "word": "it",
+              "start_ms": 13859,
+              "end_ms": 13999
+            },
+            {
+              "word": "mine",
+              "start_ms": 14039,
+              "end_ms": 15619
+            },
+            {
+              "word": "Every",
+              "start_ms": 17420,
+              "end_ms": 17779
+            },
+            {
+              "word": "signal",
+              "start_ms": 17840,
+              "end_ms": 18239
+            },
+            {
+              "word": "starts",
+              "start_ms": 18279,
+              "end_ms": 18599
+            },
+            {
+              "word": "to",
+              "start_ms": 18639,
+              "end_ms": 18859
+            },
+            {
+              "word": "glow",
+              "start_ms": 18939,
+              "end_ms": 19880
+            },
+            {
+              "word": "Tell",
+              "start_ms": 20039,
+              "end_ms": 20260
+            },
+            {
+              "word": "me",
+              "start_ms": 20319,
+              "end_ms": 20440
+            },
+            {
+              "word": "where",
+              "start_ms": 20460,
+              "end_ms": 20759
+            },
+            {
+              "word": "you",
+              "start_ms": 20819,
+              "end_ms": 20960
+            },
+            {
+              "word": "want",
+              "start_ms": 20979,
+              "end_ms": 21139
+            },
+            {
+              "word": "to",
+              "start_ms": 21179,
+              "end_ms": 21279
+            },
+            {
+              "word": "go",
+              "start_ms": 21380,
+              "end_ms": 21739
+            }
+          ],
+          "waveform_visual": [
+            0,
+            0,
+            0,
+            -1,
+            -31,
+            67,
+            85,
+            77,
+            -31,
+            59,
+            49,
+            65,
+            45,
+            24,
+            14,
+            8,
+            27,
+            49,
+            54,
+            80,
+            78,
+            52,
+            50,
+            48,
+            82,
+            -98,
+            82,
+            44,
+            29,
+            21,
+            -13,
+            -4,
+            -2,
+            -1,
+            -1,
+            1,
+            1,
+            -92,
+            63,
+            72,
+            -51,
+            69,
+            52,
+            -67,
+            -77,
+            63,
+            -31,
+            33,
+            94,
+            72,
+            77,
+            70,
+            84,
+            60,
+            46,
+            -46
+          ]
+        },
+        "audioBytes": 223872
+      },
+      {
+        "sequence": 5,
+        "type": "audio_chunk",
+        "payload": {
+          "audio_base64_capture": {
+            "omitted": true,
+            "bytes": 127872
+          },
+          "chunk": {
+            "text": "[Instrumental break]\n{instrumental, no vocals, clean lower-density rhythm bed}",
+            "duration_ms": 8000,
+            "positive_styles": [
+              "fully instrumental",
+              "clean radio bed",
+              "electric piano motif",
+              "reduced density",
+              "stable pulse"
+            ],
+            "negative_styles": [
+              "vocals",
+              "spoken words",
+              "dramatic breakdown",
+              "silence"
+            ],
+            "context_adherence": "high",
+            "conditioning_ref": null,
+            "condition_strength": null
+          },
+          "content_type": "audio/mpeg",
+          "index": 2,
+          "words_timestamps": [
+            {
+              "word": "{instrumental,",
+              "start_ms": 22019,
+              "end_ms": 24339
+            },
+            {
+              "word": "no",
+              "start_ms": 24359,
+              "end_ms": 24799
+            },
+            {
+              "word": "vocals,",
+              "start_ms": 24799,
+              "end_ms": 25299
+            },
+            {
+              "word": "clean",
+              "start_ms": 25859,
+              "end_ms": 27400
+            },
+            {
+              "word": "lower-density",
+              "start_ms": 28799,
+              "end_ms": 29699
+            },
+            {
+              "word": "rhythm",
+              "start_ms": 29679,
+              "end_ms": 29699
+            },
+            {
+              "word": "bed}",
+              "start_ms": 29679,
+              "end_ms": 29980
+            }
+          ],
+          "waveform_visual": [
+            19,
+            -14,
+            -2,
+            -2,
+            -1,
+            -1,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            -62,
+            58,
+            -43,
+            51,
+            -26,
+            -40,
+            -37,
+            -41,
+            -71,
+            -66,
+            -48,
+            -31,
+            50,
+            -24,
+            -37,
+            20,
+            -50,
+            86
+          ]
+        },
+        "audioBytes": 127872
+      },
+      {
+        "sequence": 6,
+        "type": "audio_chunk",
+        "payload": {
+          "audio_base64_capture": {
+            "omitted": true,
+            "bytes": 160128
+          },
+          "chunk": {
+            "text": "[Chorus]\nTurn the dial and let it run\nA station made for only one\nTurn the dial, the night is ours\nWe are broadcasting the stars",
+            "duration_ms": 10000,
+            "positive_styles": [
+              "bright soulful female chorus",
+              "memorable original hook",
+              "full warm harmony",
+              "driving but controlled drums"
+            ],
+            "negative_styles": [
+              "spoken word",
+              "extended vocal run"
+            ],
+            "context_adherence": "high",
+            "conditioning_ref": null,
+            "condition_strength": null
+          },
+          "content_type": "audio/mpeg",
+          "index": 3,
+          "words_timestamps": [
+            {
+              "word": "Turn",
+              "start_ms": 33039,
+              "end_ms": 33599
+            },
+            {
+              "word": "the",
+              "start_ms": 33659,
+              "end_ms": 34000
+            },
+            {
+              "word": "dial",
+              "start_ms": 34159,
+              "end_ms": 34739
+            },
+            {
+              "word": "and",
+              "start_ms": 34759,
+              "end_ms": 34980
+            },
+            {
+              "word": "let",
+              "start_ms": 35099,
+              "end_ms": 35499
+            },
+            {
+              "word": "it",
+              "start_ms": 35539,
+              "end_ms": 35639
+            },
+            {
+              "word": "run",
+              "start_ms": 35659,
+              "end_ms": 35899
+            },
+            {
+              "word": "A",
+              "start_ms": 36119,
+              "end_ms": 36199
+            },
+            {
+              "word": "station",
+              "start_ms": 36239,
+              "end_ms": 36759
+            },
+            {
+              "word": "made",
+              "start_ms": 36819,
+              "end_ms": 37059
+            },
+            {
+              "word": "for",
+              "start_ms": 37099,
+              "end_ms": 37279
+            },
+            {
+              "word": "only",
+              "start_ms": 37339,
+              "end_ms": 37639
+            },
+            {
+              "word": "one",
+              "start_ms": 37679,
+              "end_ms": 37999
+            },
+            {
+              "word": "Turn",
+              "start_ms": 38399,
+              "end_ms": 38960
+            },
+            {
+              "word": "the",
+              "start_ms": 39019,
+              "end_ms": 39380
+            },
+            {
+              "word": "dial,",
+              "start_ms": 39500,
+              "end_ms": 39719
+            },
+            {
+              "word": "the",
+              "start_ms": 39800,
+              "end_ms": 39840
+            },
+            {
+              "word": "night",
+              "start_ms": 39819,
+              "end_ms": 39900
+            },
+            {
+              "word": "is",
+              "start_ms": 39960,
+              "end_ms": 39980
+            },
+            {
+              "word": "ours",
+              "start_ms": 39960,
+              "end_ms": 39980
+            },
+            {
+              "word": "We",
+              "start_ms": 39960,
+              "end_ms": 39980
+            },
+            {
+              "word": "are",
+              "start_ms": 39960,
+              "end_ms": 39980
+            },
+            {
+              "word": "broadcasting",
+              "start_ms": 39960,
+              "end_ms": 39980
+            },
+            {
+              "word": "the",
+              "start_ms": 39960,
+              "end_ms": 39980
+            },
+            {
+              "word": "stars",
+              "start_ms": 39960,
+              "end_ms": 39980
+            }
+          ],
+          "waveform_visual": [
+            -62,
+            43,
+            56,
+            34,
+            36,
+            32,
+            38,
+            -32,
+            57,
+            51,
+            27,
+            -54,
+            87,
+            -110,
+            -86,
+            -115,
+            111,
+            -139,
+            115,
+            -107,
+            -122,
+            -110,
+            -81,
+            45,
+            56,
+            -110,
+            77,
+            121,
+            -77,
+            83,
+            -88,
+            -75,
+            -45,
+            127,
+            114,
+            -100,
+            100,
+            -96,
+            -103,
+            -116
+          ]
+        },
+        "audioBytes": 160128
+      },
+      {
+        "sequence": 7,
+        "type": "audio_chunk",
+        "payload": {
+          "audio_base64_capture": {
+            "omitted": true,
+            "bytes": 113664
+          },
+          "chunk": {
+            "text": "[Cold instrumental outro]\n{instrumental, no vocals, one precise resolved band hit}",
+            "duration_ms": 5000,
+            "positive_styles": [
+              "instrumental outro",
+              "reduced density",
+              "precise cold ending",
+              "resolved final hit",
+              "DJ-friendly"
+            ],
+            "negative_styles": [
+              "vocals",
+              "fade out",
+              "reverb tail",
+              "silence before ending"
+            ],
+            "context_adherence": "high",
+            "conditioning_ref": null,
+            "condition_strength": null
+          },
+          "content_type": "audio/mpeg",
+          "index": 4,
+          "words_timestamps": [
+            {
+              "word": "{instrumental,",
+              "start_ms": 40000,
+              "end_ms": 43099
+            },
+            {
+              "word": "no",
+              "start_ms": 43220,
+              "end_ms": 43699
+            },
+            {
+              "word": "vocals,",
+              "start_ms": 43679,
+              "end_ms": 43879
+            },
+            {
+              "word": "one",
+              "start_ms": 43939,
+              "end_ms": 44019
+            },
+            {
+              "word": "precise",
+              "start_ms": 44000,
+              "end_ms": 44460
+            },
+            {
+              "word": "resolved",
+              "start_ms": 44480,
+              "end_ms": 44619
+            },
+            {
+              "word": "band",
+              "start_ms": 44599,
+              "end_ms": 44619
+            },
+            {
+              "word": "hit}",
+              "start_ms": 44599,
+              "end_ms": 44979
+            }
+          ],
+          "waveform_visual": [
+            -111,
+            110,
+            -108,
+            -111,
+            85,
+            46,
+            22,
+            43,
+            27,
+            42,
+            -30,
+            17,
+            3,
+            -6,
+            -3,
+            -1,
+            0,
+            0,
+            0,
+            -1
+          ]
+        },
+        "audioBytes": 113664
+      },
+      {
+        "sequence": 8,
+        "type": "done",
+        "payload": {
+          "audio_chunk_count": 5,
+          "song_id": "8G97MAZ0WwKq2ehucT3X"
+        },
+        "audioBytes": 0
+      }
+    ]
+  },
+  "audio": {
+    "file": "audio.mp3",
+    "bytes": 720429,
+    "sha256": "f432fbb560a2936163dbac7f75c63e5d5a5b6100e6402a0129ebfd201d26017b"
+  }
+}

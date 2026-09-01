@@ -1,0 +1,16 @@
+{
+  "model_id": "music_v2",
+  "with_timestamps": true,
+  "with_waveform_visual": true,
+  "composition_plan": {
+    "chunks": [
+      {
+        "text": "[Dry station ID]\nRobot Radio Infinity",
+        "duration_ms": 3000,
+        "positive_styles": ["dry spoken station ident", "isolated professional radio voice", "concise confident delivery", "tight broadcast compression", "transparent background", "neutral pitch", "precise three-second duration"],
+        "negative_styles": ["music", "melody", "singing", "drums", "bass", "synthesizer", "reverb", "delay", "room ambience", "sound effects"],
+        "context_adherence": "high"
+      }
+    ]
+  }
+}

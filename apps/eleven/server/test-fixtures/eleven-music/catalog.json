@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "generationBudgetMs": 125000,
+  "fixtures": [
+    {
+      "id": "vocal-ramp",
+      "kind": "track",
+      "purpose": "Vocal track with planned instrumental intro, break, and cold outro windows",
+      "requestedDurationMs": 45000
+    },
+    {
+      "id": "instrumental-bed",
+      "kind": "track",
+      "purpose": "Fully instrumental track with presenter intro and mixable outro sections",
+      "requestedDurationMs": 36000
+    },
+    {
+      "id": "dense-vocal",
+      "kind": "track",
+      "purpose": "Difficult vocal track with no opening ramp and one short instrumental window",
+      "requestedDurationMs": 36000
+    },
+    {
+      "id": "dry-id",
+      "kind": "station-element",
+      "mixType": "dry",
+      "purpose": "Isolated station identification for overlaying an existing music bed",
+      "allowedPlacements": ["over-music", "clean-bed"],
+      "requestedDurationMs": 3000
+    },
+    {
+      "id": "wet-sting",
+      "kind": "station-element",
+      "mixType": "wet",
+      "purpose": "Self-contained musical logo for exposed placement",
+      "allowedPlacements": ["cold-open", "transition-gap", "exposed-handoff"],
+      "forbiddenPlacements": ["over-lead-music"],
+      "requestedDurationMs": 5000
+    }
+  ]
+}

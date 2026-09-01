@@ -1,0 +1,562 @@
+{
+  "schemaVersion": 1,
+  "id": "instrumental-bed",
+  "capturedAt": "2026-09-01T03:02:15.366Z",
+  "provider": "elevenlabs",
+  "endpoint": "/v1/music/detailed/stream",
+  "modelId": "music_v2",
+  "outputFormat": "mp3_48000_128",
+  "requestedDurationMs": 36000,
+  "request": {
+    "model_id": "music_v2",
+    "with_timestamps": true,
+    "with_waveform_visual": true,
+    "composition_plan": {
+      "chunks": [
+        {
+          "text": "[Presenter intro]\n{instrumental, no vocals, sparse presenter bed}",
+          "duration_ms": 8000,
+          "positive_styles": [
+            "instrumental future funk",
+            "118 BPM",
+            "D minor",
+            "dry punchy drums",
+            "muted rhythm guitar",
+            "simple bass pulse",
+            "sparse presenter bed",
+            "clean radio production"
+          ],
+          "negative_styles": [
+            "vocals",
+            "spoken words",
+            "lead solo",
+            "dense pads"
+          ],
+          "context_adherence": "high"
+        },
+        {
+          "text": "[Main development]\n{instrumental, no vocals, clipped synthesizer hooks and rhythmic counterpoint}",
+          "duration_ms": 18000,
+          "positive_styles": [
+            "instrumental",
+            "clipped synthesizer hook",
+            "elastic arrangement",
+            "dancefloor energy",
+            "clear section development"
+          ],
+          "negative_styles": [
+            "vocals",
+            "spoken words",
+            "cinematic wash"
+          ],
+          "context_adherence": "high"
+        },
+        {
+          "text": "[Mixable outro]\n{instrumental, no vocals, drums and bass only, clean bar-line ending}",
+          "duration_ms": 10000,
+          "positive_styles": [
+            "instrumental DJ outro",
+            "drums and bass bed",
+            "reduced density",
+            "clean bar-line ending",
+            "transition friendly"
+          ],
+          "negative_styles": [
+            "vocals",
+            "lead melody",
+            "abrupt truncation",
+            "long fade"
+          ],
+          "context_adherence": "high"
+        }
+      ]
+    }
+  },
+  "response": {
+    "songId": "eWMQ5fiBoGBTZ85mB4jn",
+    "requestId": null,
+    "traceId": "be8d1772074123b045cf4d99b9f35992",
+    "contentType": "text/event-stream; charset=utf-8",
+    "events": [
+      {
+        "sequence": 1,
+        "type": "audio_chunk",
+        "payload": {
+          "audio_base64_capture": {
+            "omitted": true,
+            "bytes": 94893
+          },
+          "chunk": {
+            "text": "[Presenter intro]\n{instrumental, no vocals, sparse presenter bed}",
+            "duration_ms": 8000,
+            "positive_styles": [
+              "instrumental future funk",
+              "118 BPM",
+              "D minor",
+              "dry punchy drums",
+              "muted rhythm guitar",
+              "simple bass pulse",
+              "sparse presenter bed",
+              "clean radio production"
+            ],
+            "negative_styles": [
+              "vocals",
+              "spoken words",
+              "lead solo",
+              "dense pads"
+            ],
+            "context_adherence": "high",
+            "conditioning_ref": null,
+            "condition_strength": null
+          },
+          "content_type": "audio/mpeg",
+          "index": 0,
+          "words_timestamps": [
+            {
+              "word": "{instrumental,",
+              "start_ms": 299,
+              "end_ms": 2139
+            },
+            {
+              "word": "no",
+              "start_ms": 2119,
+              "end_ms": 2139
+            },
+            {
+              "word": "vocals,",
+              "start_ms": 2339,
+              "end_ms": 5739
+            },
+            {
+              "word": "sparse",
+              "start_ms": 5819,
+              "end_ms": 5899
+            },
+            {
+              "word": "presenter",
+              "start_ms": 5879,
+              "end_ms": 6559
+            },
+            {
+              "word": "bed}",
+              "start_ms": 6579,
+              "end_ms": 7939
+            }
+          ],
+          "waveform_visual": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            -1
+          ]
+        },
+        "audioBytes": 94893
+      },
+      {
+        "sequence": 2,
+        "type": "composition_plan",
+        "payload": {
+          "chunks": [
+            {
+              "text": "[Presenter intro]\n{instrumental, no vocals, sparse presenter bed}",
+              "duration_ms": 8000,
+              "positive_styles": [
+                "instrumental future funk",
+                "118 BPM",
+                "D minor",
+                "dry punchy drums",
+                "muted rhythm guitar",
+                "simple bass pulse",
+                "sparse presenter bed",
+                "clean radio production"
+              ],
+              "negative_styles": [
+                "vocals",
+                "spoken words",
+                "lead solo",
+                "dense pads"
+              ],
+              "context_adherence": "high",
+              "conditioning_ref": null,
+              "condition_strength": null
+            },
+            {
+              "text": "[Main development]\n{instrumental, no vocals, clipped synthesizer hooks and rhythmic counterpoint}",
+              "duration_ms": 18000,
+              "positive_styles": [
+                "instrumental",
+                "clipped synthesizer hook",
+                "elastic arrangement",
+                "dancefloor energy",
+                "clear section development"
+              ],
+              "negative_styles": [
+                "vocals",
+                "spoken words",
+                "cinematic wash"
+              ],
+              "context_adherence": "high",
+              "conditioning_ref": null,
+              "condition_strength": null
+            },
+            {
+              "text": "[Mixable outro]\n{instrumental, no vocals, drums and bass only, clean bar-line ending}",
+              "duration_ms": 10000,
+              "positive_styles": [
+                "instrumental DJ outro",
+                "drums and bass bed",
+                "reduced density",
+                "clean bar-line ending",
+                "transition friendly"
+              ],
+              "negative_styles": [
+                "vocals",
+                "lead melody",
+                "abrupt truncation",
+                "long fade"
+              ],
+              "context_adherence": "high",
+              "conditioning_ref": null,
+              "condition_strength": null
+            }
+          ]
+        },
+        "audioBytes": 0
+      },
+      {
+        "sequence": 3,
+        "type": "song_metadata",
+        "payload": {
+          "title": null,
+          "description": null,
+          "genres": [],
+          "languages": [],
+          "is_explicit": null
+        },
+        "audioBytes": 0
+      },
+      {
+        "sequence": 4,
+        "type": "audio_chunk",
+        "payload": {
+          "audio_base64_capture": {
+            "omitted": true,
+            "bytes": 288000
+          },
+          "chunk": {
+            "text": "[Main development]\n{instrumental, no vocals, clipped synthesizer hooks and rhythmic counterpoint}",
+            "duration_ms": 18000,
+            "positive_styles": [
+              "instrumental",
+              "clipped synthesizer hook",
+              "elastic arrangement",
+              "dancefloor energy",
+              "clear section development"
+            ],
+            "negative_styles": [
+              "vocals",
+              "spoken words",
+              "cinematic wash"
+            ],
+            "context_adherence": "high",
+            "conditioning_ref": null,
+            "condition_strength": null
+          },
+          "content_type": "audio/mpeg",
+          "index": 1,
+          "words_timestamps": [
+            {
+              "word": "{instrumental,",
+              "start_ms": 8119,
+              "end_ms": 9959
+            },
+            {
+              "word": "no",
+              "start_ms": 10039,
+              "end_ms": 10579
+            },
+            {
+              "word": "vocals,",
+              "start_ms": 10559,
+              "end_ms": 11299
+            },
+            {
+              "word": "clipped",
+              "start_ms": 11279,
+              "end_ms": 11959
+            },
+            {
+              "word": "synthesizer",
+              "start_ms": 11939,
+              "end_ms": 15460
+            },
+            {
+              "word": "hooks",
+              "start_ms": 15440,
+              "end_ms": 15720
+            },
+            {
+              "word": "and",
+              "start_ms": 15699,
+              "end_ms": 15980
+            },
+            {
+              "word": "rhythmic",
+              "start_ms": 16619,
+              "end_ms": 21880
+            },
+            {
+              "word": "counterpoint}",
+              "start_ms": 21899,
+              "end_ms": 25099
+            }
+          ],
+          "waveform_visual": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            81,
+            -855,
+            -434,
+            -866,
+            -533,
+            -866,
+            -499,
+            -864,
+            527,
+            -881,
+            364,
+            -848,
+            484,
+            -882,
+            -375,
+            849,
+            -337,
+            -890,
+            -400,
+            -857,
+            -537,
+            -783,
+            483,
+            846,
+            409,
+            -813,
+            -321,
+            -862,
+            562,
+            -856,
+            -404,
+            -846,
+            500,
+            -818,
+            -338,
+            -864,
+            -575,
+            -877,
+            -529,
+            835,
+            -468,
+            -880,
+            390,
+            859,
+            -569,
+            813,
+            493,
+            867,
+            387,
+            828,
+            -439,
+            880,
+            -521,
+            819,
+            -476,
+            879,
+            -385,
+            859,
+            -397,
+            -379,
+            -600,
+            -152,
+            401,
+            399,
+            776
+          ]
+        },
+        "audioBytes": 288000
+      },
+      {
+        "sequence": 5,
+        "type": "audio_chunk",
+        "payload": {
+          "audio_base64_capture": {
+            "omitted": true,
+            "bytes": 193536
+          },
+          "chunk": {
+            "text": "[Mixable outro]\n{instrumental, no vocals, drums and bass only, clean bar-line ending}",
+            "duration_ms": 10000,
+            "positive_styles": [
+              "instrumental DJ outro",
+              "drums and bass bed",
+              "reduced density",
+              "clean bar-line ending",
+              "transition friendly"
+            ],
+            "negative_styles": [
+              "vocals",
+              "lead melody",
+              "abrupt truncation",
+              "long fade"
+            ],
+            "context_adherence": "high",
+            "conditioning_ref": null,
+            "condition_strength": null
+          },
+          "content_type": "audio/mpeg",
+          "index": 2,
+          "words_timestamps": [
+            {
+              "word": "{instrumental,",
+              "start_ms": 26099,
+              "end_ms": 28039
+            },
+            {
+              "word": "no",
+              "start_ms": 28019,
+              "end_ms": 28039
+            },
+            {
+              "word": "vocals,",
+              "start_ms": 28059,
+              "end_ms": 28659
+            },
+            {
+              "word": "drums",
+              "start_ms": 28639,
+              "end_ms": 29279
+            },
+            {
+              "word": "and",
+              "start_ms": 29299,
+              "end_ms": 29779
+            },
+            {
+              "word": "bass",
+              "start_ms": 29819,
+              "end_ms": 30399
+            },
+            {
+              "word": "only,",
+              "start_ms": 30480,
+              "end_ms": 31139
+            },
+            {
+              "word": "clean",
+              "start_ms": 31299,
+              "end_ms": 32699
+            },
+            {
+              "word": "bar-line",
+              "start_ms": 32759,
+              "end_ms": 34079
+            },
+            {
+              "word": "ending}",
+              "start_ms": 34059,
+              "end_ms": 35539
+            }
+          ],
+          "waveform_visual": [
+            -820,
+            27,
+            -9,
+            9,
+            3,
+            -3,
+            1,
+            2,
+            -1,
+            -1,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            3
+          ]
+        },
+        "audioBytes": 193536
+      },
+      {
+        "sequence": 6,
+        "type": "done",
+        "payload": {
+          "audio_chunk_count": 3,
+          "song_id": "eWMQ5fiBoGBTZ85mB4jn"
+        },
+        "audioBytes": 0
+      }
+    ]
+  },
+  "audio": {
+    "file": "audio.mp3",
+    "bytes": 576429,
+    "sha256": "86093da73d66c5ffb97c1601e0c585f2fd19e7d7ae391cdde7a9696c91666198"
+  }
+}

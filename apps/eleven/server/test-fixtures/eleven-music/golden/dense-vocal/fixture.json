@@ -1,0 +1,946 @@
+{
+  "schemaVersion": 1,
+  "id": "dense-vocal",
+  "capturedAt": "2026-09-01T03:02:28.603Z",
+  "provider": "elevenlabs",
+  "endpoint": "/v1/music/detailed/stream",
+  "modelId": "music_v2",
+  "outputFormat": "mp3_48000_128",
+  "requestedDurationMs": 36000,
+  "request": {
+    "model_id": "music_v2",
+    "with_timestamps": true,
+    "with_waveform_visual": true,
+    "composition_plan": {
+      "chunks": [
+        {
+          "text": "[Immediate verse]\nNo waiting for the downbeat, I arrive inside the sound\nEvery second keeps on turning while the signal circles round\nIf you want another colour then the walls begin to move\nI can hear the future forming in the pressure of the groove",
+          "duration_ms": 12000,
+          "positive_styles": [
+            "fast articulate male lead vocal from the first beat",
+            "restless electro post-punk",
+            "132 BPM",
+            "F sharp minor",
+            "angular bass guitar",
+            "tight live drums",
+            "dry urgent vocal",
+            "dense arrangement"
+          ],
+          "negative_styles": [
+            "instrumental intro",
+            "slow vocal pickup",
+            "long reverb"
+          ],
+          "context_adherence": "high"
+        },
+        {
+          "text": "[Dense chorus]\nKeep it moving, keep it bright\nChange the station every night\nKeep it moving, answer back\nPull the future through the track",
+          "duration_ms": 12000,
+          "positive_styles": [
+            "continuous male chorus vocal",
+            "stacked responses",
+            "full drums",
+            "distorted synthesizers",
+            "high energy"
+          ],
+          "negative_styles": [
+            "instrumental gap",
+            "breakdown",
+            "fade"
+          ],
+          "context_adherence": "high"
+        },
+        {
+          "text": "[Clean instrumental break]\n{instrumental, no vocals, exposed drums and bass with one clipped synthesizer figure}",
+          "duration_ms": 6000,
+          "positive_styles": [
+            "fully instrumental",
+            "clean speech window",
+            "drums and bass",
+            "clipped synthesizer",
+            "stable dynamics"
+          ],
+          "negative_styles": [
+            "vocals",
+            "shouts",
+            "spoken words",
+            "silence"
+          ],
+          "context_adherence": "high"
+        },
+        {
+          "text": "[Vocal cold ending]\nOne more signal, one last light\nCut the circuit—end the night",
+          "duration_ms": 6000,
+          "positive_styles": [
+            "male lead vocal",
+            "precise final phrase",
+            "full-band cold ending",
+            "abrupt resolved stop"
+          ],
+          "negative_styles": [
+            "instrumental outro",
+            "fade out",
+            "reverb tail",
+            "ad libs"
+          ],
+          "context_adherence": "high"
+        }
+      ]
+    }
+  },
+  "response": {
+    "songId": "B0qqYeC803iNMJe0oi9u",
+    "requestId": null,
+    "traceId": "9f93118e338e9a6dc7973ee64a8b105c",
+    "contentType": "text/event-stream; charset=utf-8",
+    "events": [
+      {
+        "sequence": 1,
+        "type": "audio_chunk",
+        "payload": {
+          "audio_base64_capture": {
+            "omitted": true,
+            "bytes": 158637
+          },
+          "chunk": {
+            "text": "[Immediate verse]\nNo waiting for the downbeat, I arrive inside the sound\nEvery second keeps on turning while the signal circles round\nIf you want another colour then the walls begin to move\nI can hear the future forming in the pressure of the groove",
+            "duration_ms": 12000,
+            "positive_styles": [
+              "fast articulate male lead vocal from the first beat",
+              "restless electro post-punk",
+              "132 BPM",
+              "F sharp minor",
+              "angular bass guitar",
+              "tight live drums",
+              "dry urgent vocal",
+              "dense arrangement"
+            ],
+            "negative_styles": [
+              "instrumental intro",
+              "slow vocal pickup",
+              "long reverb"
+            ],
+            "context_adherence": "high",
+            "conditioning_ref": null,
+            "condition_strength": null
+          },
+          "content_type": "audio/mpeg",
+          "index": 0,
+          "words_timestamps": [
+            {
+              "word": "No",
+              "start_ms": 219,
+              "end_ms": 359
+            },
+            {
+              "word": "waiting",
+              "start_ms": 419,
+              "end_ms": 639
+            },
+            {
+              "word": "for",
+              "start_ms": 680,
+              "end_ms": 779
+            },
+            {
+              "word": "the",
+              "start_ms": 799,
+              "end_ms": 899
+            },
+            {
+              "word": "downbeat,",
+              "start_ms": 919,
+              "end_ms": 1399
+            },
+            {
+              "word": "I",
+              "start_ms": 1419,
+              "end_ms": 1479
+            },
+            {
+              "word": "arrive",
+              "start_ms": 1519,
+              "end_ms": 1719
+            },
+            {
+              "word": "inside",
+              "start_ms": 1740,
+              "end_ms": 1919
+            },
+            {
+              "word": "the",
+              "start_ms": 1939,
+              "end_ms": 2039
+            },
+            {
+              "word": "sound",
+              "start_ms": 2059,
+              "end_ms": 2359
+            },
+            {
+              "word": "Every",
+              "start_ms": 2519,
+              "end_ms": 2679
+            },
+            {
+              "word": "second",
+              "start_ms": 2720,
+              "end_ms": 2939
+            },
+            {
+              "word": "keeps",
+              "start_ms": 2960,
+              "end_ms": 3079
+            },
+            {
+              "word": "on",
+              "start_ms": 3119,
+              "end_ms": 3199
+            },
+            {
+              "word": "turning",
+              "start_ms": 3220,
+              "end_ms": 3599
+            },
+            {
+              "word": "while",
+              "start_ms": 3639,
+              "end_ms": 3759
+            },
+            {
+              "word": "the",
+              "start_ms": 3779,
+              "end_ms": 3839
+            },
+            {
+              "word": "signal",
+              "start_ms": 3839,
+              "end_ms": 4059
+            },
+            {
+              "word": "circles",
+              "start_ms": 4079,
+              "end_ms": 4339
+            },
+            {
+              "word": "round",
+              "start_ms": 4380,
+              "end_ms": 4759
+            },
+            {
+              "word": "If",
+              "start_ms": 5039,
+              "end_ms": 5139
+            },
+            {
+              "word": "you",
+              "start_ms": 5139,
+              "end_ms": 5219
+            },
+            {
+              "word": "want",
+              "start_ms": 5239,
+              "end_ms": 5359
+            },
+            {
+              "word": "another",
+              "start_ms": 5380,
+              "end_ms": 5659
+            },
+            {
+              "word": "colour",
+              "start_ms": 5679,
+              "end_ms": 5879
+            },
+            {
+              "word": "then",
+              "start_ms": 5920,
+              "end_ms": 6019
+            },
+            {
+              "word": "the",
+              "start_ms": 6039,
+              "end_ms": 6119
+            },
+            {
+              "word": "walls",
+              "start_ms": 6139,
+              "end_ms": 6359
+            },
+            {
+              "word": "begin",
+              "start_ms": 6379,
+              "end_ms": 6579
+            },
+            {
+              "word": "to",
+              "start_ms": 6599,
+              "end_ms": 6679
+            },
+            {
+              "word": "move",
+              "start_ms": 6699,
+              "end_ms": 6839
+            },
+            {
+              "word": "I",
+              "start_ms": 6879,
+              "end_ms": 6919
+            },
+            {
+              "word": "can",
+              "start_ms": 6940,
+              "end_ms": 7039
+            },
+            {
+              "word": "hear",
+              "start_ms": 7039,
+              "end_ms": 7139
+            },
+            {
+              "word": "the",
+              "start_ms": 7159,
+              "end_ms": 7259
+            },
+            {
+              "word": "future",
+              "start_ms": 7259,
+              "end_ms": 7500
+            },
+            {
+              "word": "forming",
+              "start_ms": 7519,
+              "end_ms": 7759
+            },
+            {
+              "word": "in",
+              "start_ms": 7759,
+              "end_ms": 7859
+            },
+            {
+              "word": "the",
+              "start_ms": 7859,
+              "end_ms": 7939
+            },
+            {
+              "word": "pressure",
+              "start_ms": 7980,
+              "end_ms": 8340
+            },
+            {
+              "word": "of",
+              "start_ms": 8380,
+              "end_ms": 8519
+            },
+            {
+              "word": "the",
+              "start_ms": 8559,
+              "end_ms": 8739
+            },
+            {
+              "word": "groove",
+              "start_ms": 8800,
+              "end_ms": 9500
+            }
+          ],
+          "waveform_visual": [
+            -781,
+            689,
+            874,
+            726,
+            843,
+            -888,
+            -827,
+            -818,
+            696,
+            633,
+            749,
+            -847,
+            613,
+            -759,
+            -837,
+            -886,
+            -839,
+            -775,
+            -698,
+            -790,
+            -889,
+            -681,
+            866,
+            -806,
+            -880,
+            -855,
+            -878,
+            -819,
+            688,
+            694,
+            -770,
+            -762,
+            -838,
+            877,
+            -741,
+            884,
+            -613,
+            496,
+            -613,
+            686,
+            -503,
+            -775,
+            557,
+            850,
+            655,
+            -671,
+            516,
+            -676
+          ]
+        },
+        "audioBytes": 158637
+      },
+      {
+        "sequence": 2,
+        "type": "composition_plan",
+        "payload": {
+          "chunks": [
+            {
+              "text": "[Immediate verse]\nNo waiting for the downbeat, I arrive inside the sound\nEvery second keeps on turning while the signal circles round\nIf you want another colour then the walls begin to move\nI can hear the future forming in the pressure of the groove",
+              "duration_ms": 12000,
+              "positive_styles": [
+                "fast articulate male lead vocal from the first beat",
+                "restless electro post-punk",
+                "132 BPM",
+                "F sharp minor",
+                "angular bass guitar",
+                "tight live drums",
+                "dry urgent vocal",
+                "dense arrangement"
+              ],
+              "negative_styles": [
+                "instrumental intro",
+                "slow vocal pickup",
+                "long reverb"
+              ],
+              "context_adherence": "high",
+              "conditioning_ref": null,
+              "condition_strength": null
+            },
+            {
+              "text": "[Dense chorus]\nKeep it moving, keep it bright\nChange the station every night\nKeep it moving, answer back\nPull the future through the track",
+              "duration_ms": 12000,
+              "positive_styles": [
+                "continuous male chorus vocal",
+                "stacked responses",
+                "full drums",
+                "distorted synthesizers",
+                "high energy"
+              ],
+              "negative_styles": [
+                "instrumental gap",
+                "breakdown",
+                "fade"
+              ],
+              "context_adherence": "high",
+              "conditioning_ref": null,
+              "condition_strength": null
+            },
+            {
+              "text": "[Clean instrumental break]\n{instrumental, no vocals, exposed drums and bass with one clipped synthesizer figure}",
+              "duration_ms": 6000,
+              "positive_styles": [
+                "fully instrumental",
+                "clean speech window",
+                "drums and bass",
+                "clipped synthesizer",
+                "stable dynamics"
+              ],
+              "negative_styles": [
+                "vocals",
+                "shouts",
+                "spoken words",
+                "silence"
+              ],
+              "context_adherence": "high",
+              "conditioning_ref": null,
+              "condition_strength": null
+            },
+            {
+              "text": "[Vocal cold ending]\nOne more signal, one last light\nCut the circuit—end the night",
+              "duration_ms": 6000,
+              "positive_styles": [
+                "male lead vocal",
+                "precise final phrase",
+                "full-band cold ending",
+                "abrupt resolved stop"
+              ],
+              "negative_styles": [
+                "instrumental outro",
+                "fade out",
+                "reverb tail",
+                "ad libs"
+              ],
+              "context_adherence": "high",
+              "conditioning_ref": null,
+              "condition_strength": null
+            }
+          ]
+        },
+        "audioBytes": 0
+      },
+      {
+        "sequence": 3,
+        "type": "song_metadata",
+        "payload": {
+          "title": null,
+          "description": null,
+          "genres": [],
+          "languages": [],
+          "is_explicit": null
+        },
+        "audioBytes": 0
+      },
+      {
+        "sequence": 4,
+        "type": "audio_chunk",
+        "payload": {
+          "audio_base64_capture": {
+            "omitted": true,
+            "bytes": 192000
+          },
+          "chunk": {
+            "text": "[Dense chorus]\nKeep it moving, keep it bright\nChange the station every night\nKeep it moving, answer back\nPull the future through the track",
+            "duration_ms": 12000,
+            "positive_styles": [
+              "continuous male chorus vocal",
+              "stacked responses",
+              "full drums",
+              "distorted synthesizers",
+              "high energy"
+            ],
+            "negative_styles": [
+              "instrumental gap",
+              "breakdown",
+              "fade"
+            ],
+            "context_adherence": "high",
+            "conditioning_ref": null,
+            "condition_strength": null
+          },
+          "content_type": "audio/mpeg",
+          "index": 1,
+          "words_timestamps": [
+            {
+              "word": "Keep",
+              "start_ms": 12019,
+              "end_ms": 16599
+            },
+            {
+              "word": "it",
+              "start_ms": 16659,
+              "end_ms": 16759
+            },
+            {
+              "word": "moving,",
+              "start_ms": 16839,
+              "end_ms": 17259
+            },
+            {
+              "word": "keep",
+              "start_ms": 17299,
+              "end_ms": 17500
+            },
+            {
+              "word": "it",
+              "start_ms": 17539,
+              "end_ms": 17679
+            },
+            {
+              "word": "bright",
+              "start_ms": 17699,
+              "end_ms": 18059
+            },
+            {
+              "word": "Change",
+              "start_ms": 18179,
+              "end_ms": 18439
+            },
+            {
+              "word": "the",
+              "start_ms": 18440,
+              "end_ms": 18559
+            },
+            {
+              "word": "station",
+              "start_ms": 18579,
+              "end_ms": 19119
+            },
+            {
+              "word": "every",
+              "start_ms": 19199,
+              "end_ms": 19539
+            },
+            {
+              "word": "night",
+              "start_ms": 19579,
+              "end_ms": 19879
+            },
+            {
+              "word": "Keep",
+              "start_ms": 20019,
+              "end_ms": 20260
+            },
+            {
+              "word": "it",
+              "start_ms": 20300,
+              "end_ms": 20439
+            },
+            {
+              "word": "moving,",
+              "start_ms": 20479,
+              "end_ms": 20920
+            },
+            {
+              "word": "answer",
+              "start_ms": 20920,
+              "end_ms": 21320
+            },
+            {
+              "word": "back",
+              "start_ms": 21380,
+              "end_ms": 21699
+            },
+            {
+              "word": "Pull",
+              "start_ms": 21819,
+              "end_ms": 22039
+            },
+            {
+              "word": "the",
+              "start_ms": 22099,
+              "end_ms": 22220
+            },
+            {
+              "word": "future",
+              "start_ms": 22260,
+              "end_ms": 22679
+            },
+            {
+              "word": "through",
+              "start_ms": 22719,
+              "end_ms": 22940
+            },
+            {
+              "word": "the",
+              "start_ms": 22979,
+              "end_ms": 23059
+            },
+            {
+              "word": "track",
+              "start_ms": 23139,
+              "end_ms": 23579
+            }
+          ],
+          "waveform_visual": [
+            -517,
+            756,
+            -742,
+            540,
+            -609,
+            -529,
+            631,
+            661,
+            631,
+            -565,
+            -621,
+            -595,
+            -781,
+            -712,
+            862,
+            -690,
+            883,
+            757,
+            -751,
+            -694,
+            -699,
+            -756,
+            -853,
+            -665,
+            -776,
+            -765,
+            871,
+            -742,
+            658,
+            676,
+            730,
+            -797,
+            -873,
+            755,
+            830,
+            -651,
+            692,
+            -774,
+            660,
+            768,
+            705,
+            777,
+            635,
+            724,
+            -760,
+            663,
+            -758,
+            881
+          ]
+        },
+        "audioBytes": 192000
+      },
+      {
+        "sequence": 5,
+        "type": "audio_chunk",
+        "payload": {
+          "audio_base64_capture": {
+            "omitted": true,
+            "bytes": 96000
+          },
+          "chunk": {
+            "text": "[Clean instrumental break]\n{instrumental, no vocals, exposed drums and bass with one clipped synthesizer figure}",
+            "duration_ms": 6000,
+            "positive_styles": [
+              "fully instrumental",
+              "clean speech window",
+              "drums and bass",
+              "clipped synthesizer",
+              "stable dynamics"
+            ],
+            "negative_styles": [
+              "vocals",
+              "shouts",
+              "spoken words",
+              "silence"
+            ],
+            "context_adherence": "high",
+            "conditioning_ref": null,
+            "condition_strength": null
+          },
+          "content_type": "audio/mpeg",
+          "index": 2,
+          "words_timestamps": [
+            {
+              "word": "{instrumental,",
+              "start_ms": 24019,
+              "end_ms": 25219
+            },
+            {
+              "word": "no",
+              "start_ms": 25199,
+              "end_ms": 25219
+            },
+            {
+              "word": "vocals,",
+              "start_ms": 25319,
+              "end_ms": 26500
+            },
+            {
+              "word": "exposed",
+              "start_ms": 26480,
+              "end_ms": 27459
+            },
+            {
+              "word": "drums",
+              "start_ms": 28059,
+              "end_ms": 29500
+            },
+            {
+              "word": "and",
+              "start_ms": 29480,
+              "end_ms": 29500
+            },
+            {
+              "word": "bass",
+              "start_ms": 29480,
+              "end_ms": 29500
+            },
+            {
+              "word": "with",
+              "start_ms": 29480,
+              "end_ms": 29500
+            },
+            {
+              "word": "one",
+              "start_ms": 29480,
+              "end_ms": 29500
+            },
+            {
+              "word": "clipped",
+              "start_ms": 29480,
+              "end_ms": 29759
+            },
+            {
+              "word": "synthesizer",
+              "start_ms": 29739,
+              "end_ms": 29759
+            },
+            {
+              "word": "figure}",
+              "start_ms": 29739,
+              "end_ms": 29979
+            }
+          ],
+          "waveform_visual": [
+            559,
+            834,
+            696,
+            867,
+            887,
+            -632,
+            -712,
+            649,
+            -720,
+            775,
+            864,
+            888,
+            828,
+            -581,
+            -828,
+            878,
+            781,
+            834,
+            736,
+            887,
+            889,
+            -780,
+            766,
+            728
+          ]
+        },
+        "audioBytes": 96000
+      },
+      {
+        "sequence": 6,
+        "type": "audio_chunk",
+        "payload": {
+          "audio_base64_capture": {
+            "omitted": true,
+            "bytes": 129792
+          },
+          "chunk": {
+            "text": "[Vocal cold ending]\nOne more signal, one last light\nCut the circuit—end the night",
+            "duration_ms": 6000,
+            "positive_styles": [
+              "male lead vocal",
+              "precise final phrase",
+              "full-band cold ending",
+              "abrupt resolved stop"
+            ],
+            "negative_styles": [
+              "instrumental outro",
+              "fade out",
+              "reverb tail",
+              "ad libs"
+            ],
+            "context_adherence": "high",
+            "conditioning_ref": null,
+            "condition_strength": null
+          },
+          "content_type": "audio/mpeg",
+          "index": 3,
+          "words_timestamps": [
+            {
+              "word": "One",
+              "start_ms": 30079,
+              "end_ms": 31120
+            },
+            {
+              "word": "more",
+              "start_ms": 31139,
+              "end_ms": 31340
+            },
+            {
+              "word": "signal,",
+              "start_ms": 31360,
+              "end_ms": 31799
+            },
+            {
+              "word": "one",
+              "start_ms": 31839,
+              "end_ms": 32019
+            },
+            {
+              "word": "last",
+              "start_ms": 32059,
+              "end_ms": 32279
+            },
+            {
+              "word": "light",
+              "start_ms": 32299,
+              "end_ms": 32680
+            },
+            {
+              "word": "Cut",
+              "start_ms": 32720,
+              "end_ms": 32939
+            },
+            {
+              "word": "the",
+              "start_ms": 32980,
+              "end_ms": 33139
+            },
+            {
+              "word": "circuit—end",
+              "start_ms": 33179,
+              "end_ms": 33880
+            },
+            {
+              "word": "the",
+              "start_ms": 33899,
+              "end_ms": 33979
+            },
+            {
+              "word": "night",
+              "start_ms": 34119,
+              "end_ms": 34499
+            }
+          ],
+          "waveform_visual": [
+            859,
+            849,
+            524,
+            793,
+            -565,
+            -579,
+            -539,
+            528,
+            558,
+            416,
+            662,
+            719,
+            -509,
+            487,
+            594,
+            -600,
+            -748,
+            670,
+            757,
+            -305,
+            -34,
+            12,
+            -6,
+            -1
+          ]
+        },
+        "audioBytes": 129792
+      },
+      {
+        "sequence": 7,
+        "type": "done",
+        "payload": {
+          "audio_chunk_count": 4,
+          "song_id": "B0qqYeC803iNMJe0oi9u"
+        },
+        "audioBytes": 0
+      }
+    ]
+  },
+  "audio": {
+    "file": "audio.mp3",
+    "bytes": 576429,
+    "sha256": "c49cda52cc1adae5fa4c28fcd5d7bf534ed605df6e8a0fab62a2bf03c2eb7886"
+  }
+}

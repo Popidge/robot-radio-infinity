@@ -1,0 +1,44 @@
+{
+  "model_id": "music_v2",
+  "with_timestamps": true,
+  "with_waveform_visual": true,
+  "composition_plan": {
+    "chunks": [
+      {
+        "text": "[Instrumental intro]\n{instrumental, no vocals, clear eight-second presenter ramp}",
+        "duration_ms": 8000,
+        "positive_styles": ["original neon soul", "112 BPM", "A minor", "warm electric piano", "tight electronic drums", "clean instrumental intro", "sparse radio bed", "polished stereo mix"],
+        "negative_styles": ["vocals", "spoken words", "crowd noise", "long reverb tail"],
+        "context_adherence": "high"
+      },
+      {
+        "text": "[Verse]\nStreetlights draw a silver line\nWe tune the night and make it mine\nEvery signal starts to glow\nTell me where you want to go",
+        "duration_ms": 14000,
+        "positive_styles": ["clear soulful female lead vocal", "conversational phrasing", "elastic bass", "warm electric piano", "restrained electronic drums"],
+        "negative_styles": ["spoken word", "vocal ad libs over the next section"],
+        "context_adherence": "high"
+      },
+      {
+        "text": "[Instrumental break]\n{instrumental, no vocals, clean lower-density rhythm bed}",
+        "duration_ms": 8000,
+        "positive_styles": ["fully instrumental", "clean radio bed", "electric piano motif", "reduced density", "stable pulse"],
+        "negative_styles": ["vocals", "spoken words", "dramatic breakdown", "silence"],
+        "context_adherence": "high"
+      },
+      {
+        "text": "[Chorus]\nTurn the dial and let it run\nA station made for only one\nTurn the dial, the night is ours\nWe are broadcasting the stars",
+        "duration_ms": 10000,
+        "positive_styles": ["bright soulful female chorus", "memorable original hook", "full warm harmony", "driving but controlled drums"],
+        "negative_styles": ["spoken word", "extended vocal run"],
+        "context_adherence": "high"
+      },
+      {
+        "text": "[Cold instrumental outro]\n{instrumental, no vocals, one precise resolved band hit}",
+        "duration_ms": 5000,
+        "positive_styles": ["instrumental outro", "reduced density", "precise cold ending", "resolved final hit", "DJ-friendly"],
+        "negative_styles": ["vocals", "fade out", "reverb tail", "silence before ending"],
+        "context_adherence": "high"
+      }
+    ]
+  }
+}

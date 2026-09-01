@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "id": "dry-id",
+  "capturedAt": "2026-09-01T02:59:56.751Z",
+  "provider": "elevenlabs",
+  "endpoint": "/v1/music/detailed/stream",
+  "modelId": "music_v2",
+  "outputFormat": "mp3_48000_128",
+  "requestedDurationMs": 3000,
+  "request": {
+    "model_id": "music_v2",
+    "with_timestamps": true,
+    "with_waveform_visual": true,
+    "composition_plan": {
+      "chunks": [
+        {
+          "text": "[Dry station ID]\nRobot Radio Infinity",
+          "duration_ms": 3000,
+          "positive_styles": [
+            "dry spoken station ident",
+            "isolated professional radio voice",
+            "concise confident delivery",
+            "tight broadcast compression",
+            "transparent background",
+            "neutral pitch",
+            "precise three-second duration"
+          ],
+          "negative_styles": [
+            "music",
+            "melody",
+            "singing",
+            "drums",
+            "bass",
+            "synthesizer",
+            "reverb",
+            "delay",
+            "room ambience",
+            "sound effects"
+          ],
+          "context_adherence": "high"
+        }
+      ]
+    }
+  },
+  "response": {
+    "songId": "9dSTRk3qRxM0NoeTACkj",
+    "requestId": null,
+    "traceId": "2e78d04976a493bf8cfd8dfb826a74f0",
+    "contentType": "text/event-stream; charset=utf-8",
+    "events": [
+      {
+        "sequence": 1,
+        "type": "audio_chunk",
+        "payload": {
+          "audio_base64_capture": {
+            "omitted": true,
+            "bytes": 48429
+          },
+          "chunk": {
+            "text": "[Dry station ID]\nRobot Radio Infinity",
+            "duration_ms": 3000,
+            "positive_styles": [
+              "dry spoken station ident",
+              "isolated professional radio voice",
+              "concise confident delivery",
+              "tight broadcast compression",
+              "transparent background",
+              "neutral pitch",
+              "precise three-second duration"
+            ],
+            "negative_styles": [
+              "music",
+              "melody",
+              "singing",
+              "drums",
+              "bass",
+              "synthesizer",
+              "reverb",
+              "delay",
+              "room ambience",
+              "sound effects"
+            ],
+            "context_adherence": "high",
+            "conditioning_ref": null,
+            "condition_strength": null
+          },
+          "content_type": "audio/mpeg",
+          "index": 0,
+          "words_timestamps": [
+            {
+              "word": "Robot",
+              "start_ms": 179,
+              "end_ms": 639
+            },
+            {
+              "word": "Radio",
+              "start_ms": 939,
+              "end_ms": 1299
+            },
+            {
+              "word": "Infinity",
+              "start_ms": 1439,
+              "end_ms": 2159
+            }
+          ],
+          "waveform_visual": [
+            725,
+            -690,
+            682,
+            900,
+            -721,
+            543,
+            718,
+            -756,
+            -84,
+            -2,
+            0,
+            0
+          ]
+        },
+        "audioBytes": 48429
+      },
+      {
+        "sequence": 2,
+        "type": "composition_plan",
+        "payload": {
+          "chunks": [
+            {
+              "text": "[Dry station ID]\nRobot Radio Infinity",
+              "duration_ms": 3000,
+              "positive_styles": [
+                "dry spoken station ident",
+                "isolated professional radio voice",
+                "concise confident delivery",
+                "tight broadcast compression",
+                "transparent background",
+                "neutral pitch",
+                "precise three-second duration"
+              ],
+              "negative_styles": [
+                "music",
+                "melody",
+                "singing",
+                "drums",
+                "bass",
+                "synthesizer",
+                "reverb",
+                "delay",
+                "room ambience",
+                "sound effects"
+              ],
+              "context_adherence": "high",
+              "conditioning_ref": null,
+              "condition_strength": null
+            }
+          ]
+        },
+        "audioBytes": 0
+      },
+      {
+        "sequence": 3,
+        "type": "song_metadata",
+        "payload": {
+          "title": null,
+          "description": null,
+          "genres": [],
+          "languages": [],
+          "is_explicit": null
+        },
+        "audioBytes": 0
+      },
+      {
+        "sequence": 4,
+        "type": "done",
+        "payload": {
+          "audio_chunk_count": 1,
+          "song_id": "9dSTRk3qRxM0NoeTACkj"
+        },
+        "audioBytes": 0
+      }
+    ]
+  },
+  "audio": {
+    "file": "audio.mp3",
+    "bytes": 48429,
+    "sha256": "d9ecf97b6849e21efbd7526c23593ed825bebe946f0fcfd2ab9cd2fb5511a24e"
+  }
+}
