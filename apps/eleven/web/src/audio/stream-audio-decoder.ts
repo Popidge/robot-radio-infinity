@@ -3,12 +3,16 @@ import type { AudioStreamEncoding } from "@robot-radio/eleven-shared";
 
 const OUTPUT_SAMPLE_RATE = 48_000;
 const OUTPUT_CHANNELS = 2;
+export const MP3_DECODER_READY_TIMEOUT_MS = 8_000;
 
 interface MpegDecoder {
   ready: Promise<void>;
   decode(bytes: Uint8Array): Promise<MPEGDecodedAudio>;
   free(): Promise<void>;
+  terminate?(): void;
 }
+
+type MpegDecoderFactory = () => MpegDecoder;
 
 export interface EncodedStreamMetadata {
   encoding: AudioStreamEncoding;
@@ -81,10 +85,15 @@ export class PcmNormalizer {
 export class StreamAudioDecoder {
   private readonly normalizer = new PcmNormalizer();
   private readonly mpeg: MpegDecoder | null;
+  private mpegReady: Promise<void> | null = null;
   private closed = false;
+  private mpegTerminated = false;
 
-  constructor(private readonly metadata: EncodedStreamMetadata) {
-    this.mpeg = metadata.encoding === "mp3" ? new MPEGDecoderWebWorker() : null;
+  constructor(
+    private readonly metadata: EncodedStreamMetadata,
+    createMpegDecoder: MpegDecoderFactory = () => new MPEGDecoderWebWorker()
+  ) {
+    this.mpeg = metadata.encoding === "mp3" ? createMpegDecoder() : null;
   }
 
   async push(bytes: Uint8Array): Promise<Float32Array[]> {
@@ -103,7 +112,13 @@ export class StreamAudioDecoder {
     }
 
     if (!this.mpeg) throw new Error("MP3 decoder was not initialized");
-    await this.mpeg.ready;
+    this.mpegReady ??= decoderReady(this.mpeg);
+    try {
+      await this.mpegReady;
+    } catch (error) {
+      this.terminateMpeg();
+      throw error;
+    }
     const decoded = await this.mpeg.decode(bytes);
     const pcm = this.normalizer.push(decoded.channelData, decoded.sampleRate);
     return pcm ? [pcm] : [];
@@ -118,8 +133,33 @@ export class StreamAudioDecoder {
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
+    if (this.mpeg?.terminate) {
+      this.terminateMpeg();
+      return;
+    }
     await this.mpeg?.free();
   }
+
+  private terminateMpeg(): void {
+    if (this.mpegTerminated) return;
+    this.mpegTerminated = true;
+    this.mpeg?.terminate?.();
+  }
+}
+
+function decoderReady(decoder: MpegDecoder): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      reject(new Error(
+        `MP3 decoder did not initialize within ${MP3_DECODER_READY_TIMEOUT_MS} ms. `
+        + "Content-Security-Policy must allow WebAssembly with script-src 'wasm-unsafe-eval'."
+      ));
+    }, MP3_DECODER_READY_TIMEOUT_MS);
+  });
+  return Promise.race([decoder.ready, deadline]).finally(() => {
+    if (timeout !== undefined) clearTimeout(timeout);
+  });
 }
 
 function append(existing: Float32Array<ArrayBufferLike>, next: Float32Array<ArrayBufferLike>): Float32Array<ArrayBufferLike> {

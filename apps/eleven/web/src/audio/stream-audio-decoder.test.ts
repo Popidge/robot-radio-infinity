@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { PcmNormalizer, StreamAudioDecoder } from "./stream-audio-decoder";
+import { readFileSync } from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { MP3_DECODER_READY_TIMEOUT_MS, PcmNormalizer, StreamAudioDecoder } from "./stream-audio-decoder";
+
+afterEach(() => vi.useRealTimers());
 
 function samples(chunks: Array<Float32Array | null>): number[] {
   return chunks.flatMap((chunk) => chunk ? Array.from(chunk) : []);
@@ -62,5 +65,40 @@ describe("StreamAudioDecoder", () => {
     expect(output?.buffer).toBe(input.buffer);
     expect(Array.from(output ?? [])).toEqual(Array.from(input));
     await decoder.close();
+  });
+
+  it("decodes a captured ElevenLabs MP3 into mixer-ready PCM", async () => {
+    const bytes = new Uint8Array(readFileSync(new URL(
+      "../../../server/test-fixtures/eleven-music/golden/dry-id/audio.mp3",
+      import.meta.url
+    )));
+    const decoder = new StreamAudioDecoder({ encoding: "mp3", sampleRate: 48_000, channels: 2 });
+
+    const chunks = await decoder.push(bytes);
+    chunks.push(...decoder.finish());
+
+    expect(chunks.reduce((total, chunk) => total + chunk.length, 0)).toBeGreaterThan(48_000 * 2);
+    await decoder.close();
+  });
+
+  it("fails a stalled MP3 decoder instead of leaving generation hung", async () => {
+    vi.useFakeTimers();
+    const terminate = vi.fn();
+    const decoder = new StreamAudioDecoder(
+      { encoding: "mp3", sampleRate: 48_000, channels: 2 },
+      () => ({
+        ready: new Promise<void>(() => undefined),
+        decode: vi.fn(),
+        free: vi.fn(async () => undefined),
+        terminate
+      })
+    );
+
+    const pushed = decoder.push(new Uint8Array([0xff, 0xfb]));
+    const failure = expect(pushed).rejects.toThrow("script-src 'wasm-unsafe-eval'");
+    await vi.advanceTimersByTimeAsync(MP3_DECODER_READY_TIMEOUT_MS);
+
+    await failure;
+    expect(terminate).toHaveBeenCalledOnce();
   });
 });
