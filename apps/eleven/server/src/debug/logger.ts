@@ -37,7 +37,7 @@ function configuredTarget(): DebugLogTarget {
   if (configured === "off") return "off";
   if (configured === "stdout") return "stdout";
   if (configured === "file" || configured === "on") return "file";
-  return process.env.K_SERVICE ? "stdout" : "file";
+  return process.env.K_SERVICE || process.env.VERCEL ? "stdout" : "file";
 }
 
 function makeSanitizer(secrets: string[]): (value: unknown) => unknown {

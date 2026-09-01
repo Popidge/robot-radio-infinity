@@ -1,13 +1,9 @@
 import type { AudioStream, TTSProvider } from "@robot-radio/eleven-shared";
 import { fixtureSeed } from "../fixtures/waveforms";
+import { elevenLabsResponseError } from "./eleven-error";
 import { CHANNELS, SAMPLE_RATE, createFixtureStream, pcmBytes, responseBytes, type StreamControl } from "./stream-utils";
 
 export const DEFAULT_ELEVENLABS_VOICE_ID = "st7NwhTPEzqo2riw7qWC";
-
-async function errorPayload(response: Response): Promise<string> {
-  const text = (await response.text()).slice(0, 8_000);
-  try { return JSON.stringify(JSON.parse(text)) } catch { return text }
-}
 
 export class ElevenTTSApiProvider implements TTSProvider {
   private readonly active = new Map<string, { controller: AbortController; timeout: ReturnType<typeof setTimeout> }>();
@@ -46,7 +42,7 @@ export class ElevenTTSApiProvider implements TTSProvider {
     if (!response.ok) {
       clearTimeout(timeout);
       this.active.delete(id);
-      throw new Error(`ElevenLabs TTS returned HTTP ${response.status}: ${await errorPayload(response)}`);
+      throw await elevenLabsResponseError(response, "ElevenLabs TTS returned an error");
     }
     if (!response.body) {
       clearTimeout(timeout);

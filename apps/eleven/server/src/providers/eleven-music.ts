@@ -1,5 +1,6 @@
 import type { MusicProvider, MusicStream, MusicStreamMetadata, MusicWordTimestamp, TrackSection, TrackSpec, TransitionProvider, TransitionSpec } from "@robot-radio/eleven-shared";
 import { fixtureSeed } from "../fixtures/waveforms";
+import { elevenLabsResponseError } from "./eleven-error";
 import { CHANNELS, SAMPLE_RATE, createFixtureStream, pcmBytes, responseBytes, type StreamControl } from "./stream-utils";
 
 interface CompositionChunk {
@@ -49,15 +50,19 @@ function isDryStationId(spec: TrackSpec): boolean {
   return spec.styles.some((style) => /dry station id|dry spoken ident/i.test(style));
 }
 
+function sectionIsInstrumental(spec: TrackSpec, section: TrackSection): boolean {
+  return isInstrumental(spec) || !section.lyrics?.trim();
+}
+
 function chunkText(spec: TrackSpec, section: TrackSection): string {
   const heading = `[${section.name}]`;
-  if (isInstrumental(spec)) return `${heading}\n{instrumental, no vocals}`;
+  if (sectionIsInstrumental(spec, section)) return `${heading}\n{instrumental, no vocals}`;
   const lyrics = section.lyrics?.trim();
   return lyrics ? `${heading}\n${lyrics}` : heading;
 }
 
-function vocalStyles(spec: TrackSpec): string[] {
-  if (isInstrumental(spec)) return ["instrumental", "no lead vocals", "no backing vocals", "no spoken words"];
+function vocalStyles(spec: TrackSpec, section: TrackSection): string[] {
+  if (sectionIsInstrumental(spec, section)) return ["instrumental", "no lead vocals", "no backing vocals", "no spoken words"];
   if (isDryStationId(spec)) return ["isolated dry spoken station ident", `professional radio voice: ${spec.vocals}`, "no singing", "no music or effects"];
   return [
     `original vocals: ${spec.vocals}`,
@@ -65,10 +70,10 @@ function vocalStyles(spec: TrackSpec): string[] {
   ];
 }
 
-function negativeStyles(spec: TrackSpec): string[] {
+function negativeStyles(spec: TrackSpec, section: TrackSection): string[] {
   if (isDryStationId(spec)) return ["music", "melody", "singing", "drums", "bass", "synthesizer", "reverb", "delay", "ambience", "sound effects", "long silence"];
   return [
-    ...(isInstrumental(spec) ? ["lead vocals", "backing vocals", "spoken words"] : ["spoken-word narration"]),
+    ...(sectionIsInstrumental(spec, section) ? ["lead vocals", "backing vocals", "spoken words"] : ["spoken-word narration"]),
     "long silence",
     "abrupt truncation"
   ];
@@ -88,13 +93,13 @@ function trackPlan(spec: TrackSpec): { chunks: CompositionChunk[] } {
         spec.description,
         section.description,
         ...(spec.editorialNotes ?? []),
-        ...vocalStyles(spec),
+        ...vocalStyles(spec, section),
         "original composition",
         "coherent arrangement",
         "radio-ready production",
         section.transitionFriendly ? "smooth section boundary" : "purposeful musical development"
       ],
-      negative_styles: negativeStyles(spec),
+      negative_styles: negativeStyles(spec, section),
       context_adherence: "high"
     }))
   };
@@ -153,11 +158,6 @@ function transitionPlan(spec: TransitionSpec): { chunks: CompositionChunk[] } {
       }
     ]
   };
-}
-
-async function errorPayload(response: Response): Promise<string> {
-  const text = (await response.text()).slice(0, 12_000);
-  try { return JSON.stringify(JSON.parse(text)) } catch { return text }
 }
 
 function nonNegativeInteger(value: string | undefined, fallback: number): number {
@@ -327,7 +327,7 @@ export class ElevenMusicApiProvider implements MusicProvider, TransitionProvider
     const active: ActiveRequest = { controller, timeout };
     this.active.set(spec.id, active);
     let response: Response | undefined;
-    let rejectedMessage: string | undefined;
+    let rejectedError: Error | undefined;
     const maximumAttempts = nonNegativeInteger(process.env.ELEVENLABS_MUSIC_HTTP_RETRIES, DEFAULT_HTTP_RETRIES) + 1;
     const retryDelayMs = nonNegativeInteger(process.env.ELEVENLABS_MUSIC_RETRY_DELAY_MS, DEFAULT_RETRY_DELAY_MS);
     try {
@@ -350,8 +350,10 @@ export class ElevenMusicApiProvider implements MusicProvider, TransitionProvider
           continue;
         }
         if (response.ok) break;
-        const payload = await errorPayload(response);
-        rejectedMessage = `Eleven Music rejected ${isTransition ? "transition" : "track"} ${spec.id} with HTTP ${response.status}: ${payload}`;
+        rejectedError = await elevenLabsResponseError(
+          response,
+          `Eleven Music rejected ${isTransition ? "transition" : "track"} ${spec.id}`
+        );
         if (!retryableStatus(response.status) || attempt === maximumAttempts) break;
         await waitForRetry(retryDelayMs * attempt, controller.signal);
       }
@@ -363,7 +365,7 @@ export class ElevenMusicApiProvider implements MusicProvider, TransitionProvider
     if (!response?.ok) {
       clearTimeout(timeout);
       this.active.delete(spec.id);
-      throw new Error(rejectedMessage ?? `Eleven Music did not return a usable response after ${maximumAttempts} attempts.`);
+      throw rejectedError ?? new Error(`Eleven Music did not return a usable response after ${maximumAttempts} attempts.`);
     }
     if (!response.body) {
       clearTimeout(timeout);

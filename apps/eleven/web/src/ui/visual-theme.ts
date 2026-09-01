@@ -2,6 +2,7 @@ import type { MusicalIntent, PlaybackState } from "@robot-radio/eleven-shared";
 
 export interface VisualTheme {
   paper: string;
+  canvas: string;
   ink: string;
   primary: string;
   secondary: string;
@@ -30,6 +31,12 @@ function printColour(hue: number, energy: number, lightnessOffset = 0): string {
   return `hsl(${Math.round(hue) % 360} ${saturation}% ${lightness}%)`;
 }
 
+function canvasColour(hue: number, energy: number): string {
+  const saturation = Math.round(24 + energy * 30);
+  const lightness = Math.round(88 - energy * 10);
+  return `hsl(${Math.round(hue) % 360} ${saturation}% ${lightness}%)`;
+}
+
 export function createVisualTheme(playback: PlaybackState, intent: MusicalIntent): VisualTheme {
   const energy = clamp(playback.energy ?? intent.energy ?? 0.55, 0, 1);
   const signature = [
@@ -38,9 +45,11 @@ export function createVisualTheme(playback: PlaybackState, intent: MusicalIntent
     ...(playback.mood ?? intent.mood)
   ].filter(Boolean).join("|");
   const baseHue = hashText(signature || intent.description) % 360;
+  const paper = energy > 0.78 ? "#f8f1df" : "#f2eddf";
 
   return {
-    paper: energy > 0.78 ? "#f8f1df" : "#f2eddf",
+    paper,
+    canvas: playback.trackId ? canvasColour((baseHue + 218) % 360, energy) : paper,
     ink: "#11100d",
     primary: printColour(baseHue, energy),
     secondary: printColour((baseHue + 132) % 360, energy, 1),

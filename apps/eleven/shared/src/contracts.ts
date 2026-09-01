@@ -53,6 +53,7 @@ export interface TrackSpec extends TrackDirective {
   id: string;
   programmeId: string;
   revision: number;
+  role?: "programme" | "opening_imaging";
   styles: string[];
   mood: string[];
   energy: number;
@@ -102,6 +103,7 @@ export interface UrgencyAssessment {
 
 export type OnAirCuePurpose = "opening" | "listener_acknowledgement" | "back_announce" | "handoff_setup" | "mid_track_observation";
 export type ProducerTimingSuggestion = "opening" | "conversation_only" | "future" | "next_track" | "immediate" | "continuity";
+export type SpeechPlacement = "opening_intro" | "immediate_transition" | "handoff" | "clean_bed" | "mid_track";
 
 export interface PresenterIdentity {
   name: string;
@@ -196,6 +198,7 @@ export interface AutonomyContext {
   mode: AutonomyMode;
   tracksSinceListener: number;
   silenceMs: number;
+  speechSilenceMs: number | null;
 }
 
 export interface MusicWordTimestamp {
@@ -246,6 +249,7 @@ export interface TrackPresentationMap {
 
 export interface PlaybackState {
   trackId: string | null;
+  role?: "programme" | "opening_imaging";
   title: string | null;
   playheadMs: number;
   durationMs: number | null;
@@ -321,6 +325,7 @@ export interface PendingUserRequest {
   urgency?: UrgencyAssessment;
   plan?: ProducerPlan;
   applied: boolean;
+  nearHorizonAtRequest?: boolean;
   resolution?: "conversation" | "deferred" | "next" | "immediate";
 }
 export interface StartupState { requestId: string; message: string; status: "planning" | "generating" }
@@ -337,6 +342,7 @@ export interface StationState {
   playback: PlaybackState;
   intent: MusicalIntent;
   intentRevision: number;
+  openingImaging: NextTrackState;
   nextTrack: NextTrackState;
   transition: TransitionState;
   showState: ShowState;
@@ -348,20 +354,24 @@ export interface StationState {
       speechId: string;
       text: string;
       purpose: OnAirCuePurpose;
+      placement: SpeechPlacement;
       revision: number;
       trackId?: string;
       linkFingerprint?: string;
+      textPublished?: boolean;
     };
     prepared?: {
       speechId: string;
       text: string;
       purpose: OnAirCuePurpose;
+      placement: SpeechPlacement;
       revision: number;
       trackId?: string;
       linkFingerprint: string;
       status: "preparing" | "ready" | "playing";
       durationMs?: number;
       readyAt?: number;
+      textPublished?: boolean;
     };
   };
   carts: StationElementRegistry;

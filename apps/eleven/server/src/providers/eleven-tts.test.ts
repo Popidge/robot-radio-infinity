@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ELEVENLABS_CREDITS_EXHAUSTED_MESSAGE } from "./eleven-error";
 import { DEFAULT_ELEVENLABS_VOICE_ID, ElevenTTSApiProvider } from "./eleven-tts";
 
 const originalEnvironment = { ...process.env };
@@ -35,5 +36,16 @@ describe("ElevenLabs TTS transport", () => {
     for await (const _chunk of stream.chunks) { /* drain the response */ }
 
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain(`/text-to-speech/${DEFAULT_ELEVENLABS_VOICE_ID}/stream`);
+  });
+
+  it("returns clear listener copy when the API key credit limit is exhausted", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      detail: { status: "quota_exceeded", message: "Insufficient quota" }
+    }), { status: 401 })));
+    const provider = new ElevenTTSApiProvider("test-key", "voice-test");
+
+    await expect(provider.speak("speech-limit", "One last link.")).rejects.toThrow(
+      ELEVENLABS_CREDITS_EXHAUSTED_MESSAGE
+    );
   });
 });

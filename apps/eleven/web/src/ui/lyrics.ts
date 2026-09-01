@@ -9,6 +9,29 @@ export interface LyricCue {
   colourIndex: number;
 }
 
+export interface LyricFitInput {
+  contentWidth: number;
+  contentHeight: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  rotationDeg: number;
+  travelX: number;
+  travelY: number;
+  inset?: number;
+}
+
+export function lyricFitScale(input: LyricFitInput): number {
+  const radians = input.rotationDeg * (Math.PI / 180);
+  const rotatedWidth = input.contentWidth * Math.abs(Math.cos(radians))
+    + input.contentHeight * Math.abs(Math.sin(radians));
+  const rotatedHeight = input.contentWidth * Math.abs(Math.sin(radians))
+    + input.contentHeight * Math.abs(Math.cos(radians));
+  const inset = input.inset ?? 24;
+  const availableWidth = Math.max(1, input.viewportWidth - inset * 2 - Math.abs(input.travelX));
+  const availableHeight = Math.max(1, input.viewportHeight - inset * 2 - Math.abs(input.travelY));
+  return Math.max(0.05, Math.min(1, availableWidth / rotatedWidth, availableHeight / rotatedHeight));
+}
+
 function lyricLines(lyrics: string | undefined): string[] {
   return (lyrics ?? "")
     .split(/\r?\n/)
@@ -96,6 +119,10 @@ export function buildLyricCues(
         const hash = hashText(signature);
         const fallbackStartMs = sectionStartMs + leadInMs + lineIndex * lineDurationMs;
         const exact = wordTimestamps?.length ? timestampWindow(text, wordTimestamps, timestampIndex) : undefined;
+        // Once the provider has supplied observed words, it is the authority on
+        // what was actually performed. Do not animate planned lines that Eleven
+        // omitted or has not generated yet.
+        if (wordTimestamps?.length && !exact) return;
         if (exact) timestampIndex = exact.nextIndex;
         const startMs = exact?.startMs ?? fallbackStartMs;
         cues.push({

@@ -7,11 +7,16 @@ export async function readJson(request: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-export function sendJson(response: ServerResponse, status: number, body: unknown): void {
+export function sendJson(
+  response: ServerResponse,
+  status: number,
+  body: unknown,
+  headers: Record<string, string | string[]> = {}
+): void {
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
-    "access-control-allow-origin": "*",
-    "access-control-allow-headers": "content-type"
+    "cache-control": "no-store",
+    ...headers
   });
   response.end(JSON.stringify(body));
 }

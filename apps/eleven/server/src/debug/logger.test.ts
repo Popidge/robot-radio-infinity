@@ -64,4 +64,22 @@ describe("structured debug logger", () => {
     expect(lines.join("")).toContain('"event":"cloud.started"');
     expect(lines.join("")).not.toContain("must-not-appear");
   });
+
+  it("writes NDJSON to stdout by default on Vercel", () => {
+    delete process.env.ROBOT_RADIO_DEBUG_LOG;
+    process.env.VERCEL = "1";
+    const lines: string[] = [];
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      lines.push(String(chunk));
+      return true;
+    });
+
+    const logger = createDebugLogger(new Date("2026-09-01T12:00:00.000Z"));
+    logger.log("info", "vercel.started");
+    logger.close();
+
+    stdout.mockRestore();
+    expect(logger.filePath).toBeNull();
+    expect(lines.join("")).toContain('"event":"vercel.started"');
+  });
 });

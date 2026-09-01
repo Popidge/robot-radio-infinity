@@ -69,4 +69,15 @@ describe("TrackPresentationMap against retained Eleven Music output", () => {
     expect(map.safeMicWindows).toHaveLength(3);
     expect(map.safeMicWindows[0]).toMatchObject({ startMs: 0, endMs: 8_000, kind: "intro", source: "planned" });
   });
+
+  it("does not mistake an explicitly negated fade for a fade ending", () => {
+    const map = buildTrackPresentationMap("resolved", 30_000, [{
+      name: "Final chorus and resolved ending",
+      durationMs: 30_000,
+      description: "Land on one clean resolved final chord; do not fade.",
+      lyrics: "Hold the signal"
+    }]);
+
+    expect(map.endStyle).toBe("resolved");
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeLyricCue, buildLyricCues, splitLyricForDisplay } from "./lyrics";
+import { activeLyricCue, buildLyricCues, lyricFitScale, splitLyricForDisplay } from "./lyrics";
 
 describe("lyric cues", () => {
   it("maps each supplied lyric line into its section window", () => {
@@ -54,8 +54,45 @@ describe("lyric cues", () => {
     expect(cues[1]?.endMs).toBe(13_160);
   });
 
+  it("does not render planned lyric lines that are absent from observed audio", () => {
+    const cues = buildLyricCues([
+      {
+        name: "Verse",
+        durationMs: 30_000,
+        description: "Voice enters",
+        lyrics: "First signal through the room\nA line the performance omitted"
+      }
+    ], 30_000, [
+      { word: "First", startMs: 4_000, endMs: 4_350 },
+      { word: "signal", startMs: 4_360, endMs: 4_800 },
+      { word: "through", startMs: 4_810, endMs: 5_120 },
+      { word: "the", startMs: 5_130, endMs: 5_260 },
+      { word: "room", startMs: 5_270, endMs: 5_900 }
+    ]);
+
+    expect(cues.map((cue) => cue.text)).toEqual(["First signal through the room"]);
+  });
+
   it("balances a lyric across two lines without creating separate cues", () => {
     expect(splitLyricForDisplay("Turn the noise into light")).toEqual(["Turn the noise", "into light"]);
     expect(splitLyricForDisplay("Signal")).toEqual(["Signal"]);
+  });
+
+  it("scales rotated long lines inside the visible canvas", () => {
+    const scale = lyricFitScale({
+      contentWidth: 1_600,
+      contentHeight: 260,
+      viewportWidth: 1_280,
+      viewportHeight: 720,
+      rotationDeg: -8,
+      travelX: 38,
+      travelY: -5,
+      inset: 32
+    });
+    const radians = 8 * (Math.PI / 180);
+    const fittedWidth = (1_600 * Math.cos(radians) + 260 * Math.sin(radians)) * scale;
+
+    expect(scale).toBeLessThan(1);
+    expect(fittedWidth).toBeLessThanOrEqual(1_280 - 64 - 38);
   });
 });

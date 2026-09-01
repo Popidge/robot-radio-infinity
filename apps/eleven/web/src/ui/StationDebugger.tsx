@@ -67,6 +67,7 @@ export function StationDebugger({ state }: StationDebuggerProps) {
             <div><dt>Station elements</dt><dd>{state.carts.entries.filter((entry) => entry.status === "ready").length}/{state.carts.entries.length} ready</dd></div>
             <div><dt>Autonomy</dt><dd>{state.autonomy.mode}</dd></div>
             <div><dt>Startup</dt><dd>{state.startup?.status ?? "—"}</dd></div>
+            <div><dt>Opening imaging</dt><dd>{state.playback.role === "opening_imaging" ? "playing" : state.openingImaging.status}</dd></div>
           </dl>
         </article>
 

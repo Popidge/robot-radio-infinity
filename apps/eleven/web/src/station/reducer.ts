@@ -6,6 +6,7 @@ import type {
   ProducerPlan,
   ShowMemoryUpdates,
   ShowState,
+  SpeechPlacement,
   StationCommand,
   StationElementSpec,
   StationEvent,
@@ -18,6 +19,7 @@ import type {
   UrgencyInput,
   UserIntentInput
 } from "@robot-radio/eleven-shared";
+import { selectAutonomyMode, shouldAuthorizeAutonomousCue } from "@robot-radio/eleven-shared";
 import { createInitialState } from "./state";
 import { buildTrackPresentationMap } from "./presentation-map";
 
@@ -37,11 +39,8 @@ export const MID_TRACK_CUE_EDGE_MS = 45_000;
 export const SPEECH_WINDOW_TAIL_MS = 420;
 export const SPEECH_WINDOW_LEAD_MS = 180;
 export const MAX_PREPARED_SPEECH_WAIT_MS = 30_000;
-export const CRUISE_TRACK_THRESHOLD = 2;
-export const EXPLORATORY_TRACK_THRESHOLD = 4;
-export const CRUISE_SILENCE_MS = 8 * 60_000;
-export const EXPLORATORY_SILENCE_MS = 18 * 60_000;
 export const CART_REPEAT_COOLDOWN_MS = 12 * 60_000;
+export const OPENING_IMAGING_DURATION_MS = 30_000;
 
 export interface Reduction { state: StationState; commands: StationCommand[] }
 
@@ -81,6 +80,52 @@ export function compileTrackSpec(id: string, revision: number, directive: TrackD
     durationMs: directive.durationMs ?? PROGRAM_TRACK_DURATION_MS,
     sections: directive.sections,
     editorialNotes: directive.editorialNotes
+  };
+}
+
+function compileOpeningImagingSpec(sessionId: string, revision: number, presenterName: string): TrackSpec {
+  return {
+    id: `${sessionId}-opening-imaging`,
+    programmeId: sessionId,
+    revision,
+    role: "opening_imaging",
+    title: presenterName,
+    description: "A freshly generated thirty-second radio cold open: one bold station ident, then vivid future-facing instrumental continuity with a clean broadcast handoff.",
+    styles: ["future radio opening imaging", "electro-punk broadcast ident", "bold synthetic continuity", "tight modern station sound"],
+    mood: ["immediate", "electric", "welcoming", "confident"],
+    energy: 0.78,
+    bpm: 124,
+    key: "C major",
+    vocals: "One stylised sung or spoken station ident in the opening section; no further words after it.",
+    language: "English",
+    durationMs: OPENING_IMAGING_DURATION_MS,
+    sections: [
+      {
+        name: "Fresh station ident",
+        durationMs: 5_000,
+        description: `Open immediately over the music with exactly the station name “${presenterName}”. The delivery may be sung, spoken, harmonised, chopped or stylised, but add no other words.`,
+        lyrics: presenterName,
+        transitionFriendly: false
+      },
+      {
+        name: "Instrumental opening continuity",
+        durationMs: 19_000,
+        description: "Continue as a concise, fully instrumental piece of bold modern radio imaging. Develop one memorable synthetic motif with tight drums and clear movement; do not imply any particular listener-requested genre.",
+        transitionFriendly: true
+      },
+      {
+        name: "Instrumental handoff",
+        durationMs: 6_000,
+        description: "Remove vocal material completely, simplify to a stable rhythmic and harmonic bed, then resolve with a precise clean broadcast handoff. No fade, spoken tag or long reverb tail.",
+        transitionFriendly: true
+      }
+    ],
+    editorialNotes: [
+      `Use exactly the words “${presenterName}” once during the first five seconds and no other words anywhere in the composition.`,
+      "Make the ident and music feel like one authored piece rather than a voice pasted over a backing track.",
+      "Keep the continuity format-neutral: this is station imaging, not an interpretation of the listener request.",
+      "Reserve the final six seconds as an exposed, vocal-free handoff with a clean ending and no fade."
+    ]
   };
 }
 
@@ -240,20 +285,21 @@ function userIntentInput(state: StationState, requestId: string, message: string
 
 function continuityInput(state: StationState, requestId: string, at: number): ContinuityInput {
   const silenceMs = state.autonomy.lastListenerAt === null ? 0 : Math.max(0, at - state.autonomy.lastListenerAt);
+  const speechSilenceMs = state.showState.speechCadence.lastCueAt === null
+    ? null
+    : Math.max(0, at - state.showState.speechCadence.lastCueAt);
   return {
     requestId,
     currentIntent: state.intent,
     currentTrack: state.playback.trackId ? snapshot(state) : null,
     showState: state.showState,
-    autonomy: { mode: state.autonomy.mode, tracksSinceListener: state.autonomy.tracksSinceListener, silenceMs }
+    autonomy: { mode: state.autonomy.mode, tracksSinceListener: state.autonomy.tracksSinceListener, silenceMs, speechSilenceMs }
   };
 }
 
 function autonomyAt(state: StationState, at: number): StationState["autonomy"] {
   const silenceMs = state.autonomy.lastListenerAt === null ? 0 : Math.max(0, at - state.autonomy.lastListenerAt);
-  const mode = state.autonomy.tracksSinceListener >= EXPLORATORY_TRACK_THRESHOLD || silenceMs >= EXPLORATORY_SILENCE_MS
-    ? "exploratory"
-    : state.autonomy.tracksSinceListener >= CRUISE_TRACK_THRESHOLD || silenceMs >= CRUISE_SILENCE_MS ? "cruise" : "interactive";
+  const mode = selectAutonomyMode({ tracksSinceListener: state.autonomy.tracksSinceListener, silenceMs });
   return { ...state.autonomy, mode };
 }
 
@@ -286,15 +332,13 @@ function applyShowMemory(
   fallbackThesis: string,
   fallbackFingerprint?: string
 ): ShowState {
-  const fingerprint = updates.productionFingerprint?.trim() || fallbackFingerprint;
+  // The deterministic fingerprint contains the title as well as the production
+  // shape. Prefer it when a concrete directive exists so the model cannot lose
+  // title-separation memory by returning a title-free semantic fingerprint.
+  const fingerprint = fallbackFingerprint?.trim() || updates.productionFingerprint?.trim();
+  const withListenerMemory = applyListenerMemory(showState, updates);
   return {
-    ...showState,
-    listener: {
-      preferences: appendUnique(showState.listener.preferences, updates.listener?.preferences, 8),
-      dislikes: appendUnique(showState.listener.dislikes, updates.listener?.dislikes, 8),
-      callbacks: appendUnique(showState.listener.callbacks, updates.listener?.callbacks, 6),
-      notablePhrases: appendUnique(showState.listener.notablePhrases, updates.listener?.notablePhrases, 6)
-    },
+    ...withListenerMemory,
     musicalThesis: {
       current: updates.musicalThesis?.trim() || fallbackThesis,
       intendedTrajectory: updates.intendedTrajectory
@@ -305,8 +349,19 @@ function applyShowMemory(
       showState.recentProductionFingerprints,
       fingerprint ? [fingerprint] : undefined,
       8
-    ),
-    recentLinkFingerprints: showState.recentLinkFingerprints,
+    )
+  };
+}
+
+function applyListenerMemory(showState: ShowState, updates: ShowMemoryUpdates): ShowState {
+  return {
+    ...showState,
+    listener: {
+      preferences: appendUnique(showState.listener.preferences, updates.listener?.preferences, 8),
+      dislikes: appendUnique(showState.listener.dislikes, updates.listener?.dislikes, 8),
+      callbacks: appendUnique(showState.listener.callbacks, updates.listener?.callbacks, 6),
+      notablePhrases: appendUnique(showState.listener.notablePhrases, updates.listener?.notablePhrases, 6)
+    },
     speechCadence: {
       ...showState.speechCadence,
       sessionTalkativeness: updates.sessionTalkativeness ?? showState.speechCadence.sessionTalkativeness
@@ -318,13 +373,22 @@ function plannedCue(
   plan: ProducerPlan,
   speechId: string,
   revision: number,
-  trackId?: string
+  trackId?: string,
+  timing: ProducerPlan["suggestedTiming"] = plan.suggestedTiming
 ): StationState["dj"]["pending"] {
   if (!plan.onAirCue) return undefined;
+  const purpose = plan.onAirCue.purpose;
+  const placement: SpeechPlacement = purpose === "opening" ? "opening_intro"
+    : purpose === "back_announce" || purpose === "handoff_setup" ? "handoff"
+    : purpose === "mid_track_observation" ? "mid_track"
+    : timing === "immediate" ? "immediate_transition"
+    : timing === "next_track" ? "handoff"
+    : "clean_bed";
   return {
     speechId,
     text: plan.onAirCue.text,
-    purpose: plan.onAirCue.purpose,
+    purpose,
+    placement,
     revision,
     trackId,
     linkFingerprint: plan.onAirCue.linkFingerprint ?? `${plan.onAirCue.purpose}: direct concise link`
@@ -334,21 +398,9 @@ function plannedCue(
 function append<T>(items: T[], item: T, limit: number): T[] { return [...items, item].slice(-limit) }
 
 function finish(state: StationState, event: StationEvent, commands: StationCommand[]): Reduction {
-  const recentDjLines = commands.reduce(
-    (lines, command) => command.type === "PREPARE_SPEECH" ? append(lines, command.text, 12) : lines,
-    state.recentDjLines
-  );
-  const conversation = commands.reduce(
-    (messages, command) => command.type === "PREPARE_SPEECH"
-      ? append(messages, { role: "dj" as const, text: command.text, at: event.at }, 24)
-      : messages,
-    state.conversation
-  );
   return {
     state: {
       ...state,
-      recentDjLines,
-      conversation,
       recentEvents: append(state.recentEvents, event, 500),
       recentCommands: [...state.recentCommands, ...commands].slice(-500)
     },
@@ -391,15 +443,17 @@ function resolveUser(state: StationState): Reduction {
     return {
       state: {
         ...state,
-        showState: applyShowMemory(state.showState, plan.memoryUpdates, state.showState.musicalThesis.current),
-        dj: { ...state.dj, pending: plannedCue(plan, `cue-${requestId}`, revision) },
+        showState: applyListenerMemory(state.showState, plan.memoryUpdates),
+        dj: { ...state.dj, pending: plannedCue(plan, `cue-${requestId}`, revision, undefined, urgency.timing) },
         pendingUser: { ...pending, applied: true, resolution: "conversation" }
       },
       commands: []
     };
   }
 
-  const nearHorizon = (state.playback.remainingMs ?? Infinity) <= NEXT_TRACK_HORIZON_MS + NEXT_TRACK_REQUEST_GUARD_MS || state.nextTrack.status !== "none";
+  const nearHorizon = pending.nearHorizonAtRequest ?? (
+    (state.playback.remainingMs ?? Infinity) <= NEXT_TRACK_HORIZON_MS + NEXT_TRACK_REQUEST_GUARD_MS || state.nextTrack.status !== "none"
+  );
   const promoted = urgency.timing === "immediate" || (urgency.timing === "next_track" && nearHorizon);
   if (!promoted) {
     const commands: StationCommand[] = [];
@@ -413,7 +467,7 @@ function resolveUser(state: StationState): Reduction {
         showState: applyShowMemory(state.showState, plan.memoryUpdates, direction.intent.description, productionFingerprint(directive)),
         queuedDirective: directive,
         transition: state.transition.revision === revision ? emptyTransition() : state.transition,
-        dj: { ...state.dj, pending: plannedCue(plan, `cue-${requestId}`, revision) },
+        dj: { ...state.dj, pending: plannedCue(plan, `cue-${requestId}`, revision, undefined, urgency.timing) },
         pendingUser: { ...pending, applied: true, resolution: "deferred" }
       },
       commands
@@ -439,7 +493,7 @@ function resolveUser(state: StationState): Reduction {
       showState: applyShowMemory(state.showState, plan.memoryUpdates, direction.intent.description, productionFingerprint(directive)),
       nextTrack: { status: "generating", trackId: trackSpec.id, revision, spec: trackSpec, bufferedMs: 0, generatedMs: 0 },
       transition: transitionState,
-      dj: { ...state.dj, pending: plannedCue(plan, `cue-${requestId}`, revision, trackSpec.id) },
+      dj: { ...state.dj, pending: plannedCue(plan, `cue-${requestId}`, revision, trackSpec.id, urgency.timing) },
       pendingUser: { ...pending, applied: true, resolution: urgency.timing === "immediate" ? "immediate" : "next" }
     },
     commands
@@ -470,6 +524,9 @@ function beginTransitionFromUrgency(state: StationState, assessment: UrgencyAsse
 function eventMatchesNext(state: StationState, trackId: string, revision: number): boolean {
   return state.nextTrack.trackId === trackId && state.nextTrack.revision === revision;
 }
+function eventMatchesOpeningImaging(state: StationState, trackId: string, revision: number): boolean {
+  return state.openingImaging.trackId === trackId && state.openingImaging.revision === revision;
+}
 function eventMatchesTransition(state: StationState, transitionId: string, revision: number): boolean {
   return state.transition.transitionId === transitionId && state.transition.revision === revision;
 }
@@ -478,14 +535,43 @@ function isRepairableTrackRejection(error: string): boolean {
   return /bad_prompt|bad_composition_plan|prompt_suggestion|composition_plan_suggestion/i.test(error);
 }
 
+function isProviderAllowanceExhausted(error: string): boolean {
+  return /used its current ElevenLabs allowance|insufficient_credits|quota_exceeded/i.test(error);
+}
+
 function userCommittedTransition(state: StationState): boolean {
   const pending = state.pendingUser;
   return Boolean(
     pending?.applied &&
     pending.revision === state.transition.revision &&
     pending.requestId === state.transition.spec?.programmeId &&
-    (pending.resolution === "immediate" || pending.resolution === "next")
+    pending.resolution === "immediate"
   );
+}
+
+function userCommittedNextTransition(state: StationState): boolean {
+  const pending = state.pendingUser;
+  return Boolean(
+    pending?.applied &&
+    pending.revision === state.transition.revision &&
+    pending.requestId === state.transition.spec?.programmeId &&
+    pending.resolution === "next"
+  );
+}
+
+function naturalTransitionDue(state: StationState, remainingMs: number): boolean {
+  const ending = state.playback.presentationMap?.endStyle ?? "unknown";
+  return ending === "cold" || ending === "resolved"
+    ? remainingMs <= 0
+    : remainingMs <= NORMAL_CROSSFADE_MS + 1_000;
+}
+
+function attachHandoffCueToTrack(dj: StationState["dj"], trackId: string): StationState["dj"] {
+  const attach = <T extends StationState["dj"]["pending"] | StationState["dj"]["prepared"]>(cue: T): T => {
+    if (!cue || cue.trackId || cue.placement !== "handoff") return cue;
+    return { ...cue, trackId } as T;
+  };
+  return { ...dj, pending: attach(dj.pending), prepared: attach(dj.prepared) };
 }
 
 function scheduleDueHorizon(state: StationState, at: number): Reduction {
@@ -503,6 +589,7 @@ function scheduleDueHorizon(state: StationState, at: number): Reduction {
         horizonRequestId: undefined,
         queuedDirective: undefined,
         phase: "generating_next",
+        dj: attachHandoffCueToTrack(state.dj, spec.id),
         nextTrack: { status: "generating", trackId: spec.id, revision: spec.revision, spec, bufferedMs: 0, generatedMs: 0 }
       },
       commands: [{ type: "GENERATE_TRACK", spec }]
@@ -536,6 +623,19 @@ function rememberLink(showState: ShowState, fingerprint: string): ShowState {
   return { ...showState, recentLinkFingerprints: appendUnique(showState.recentLinkFingerprints, [fingerprint], 8) };
 }
 
+function publishCueText(state: StationState, at: number): StationState {
+  const cue = state.dj.pending;
+  if (!cue || cue.textPublished) return state;
+  const fingerprint = cue.linkFingerprint ?? `${cue.purpose}: direct concise link`;
+  return {
+    ...state,
+    showState: rememberLink(state.showState, fingerprint),
+    recentDjLines: append(state.recentDjLines, cue.text, 12),
+    conversation: append(state.conversation, { role: "dj", text: cue.text, at }, 24),
+    dj: { ...state.dj, pending: { ...cue, linkFingerprint: fingerprint, textPublished: true } }
+  };
+}
+
 function preparedSpeechDecision(state: StationState, at: number): CueDecision {
   const cue = state.dj.prepared;
   if (!cue || cue.status !== "ready" || cue.durationMs === undefined) return "wait";
@@ -548,90 +648,85 @@ function preparedSpeechDecision(state: StationState, at: number): CueDecision {
   if (cue.revision !== state.intentRevision) return "drop";
   const subjectIsCurrent = !cue.trackId || cue.trackId === state.nextTrack.trackId || cue.trackId === state.playback.trackId;
   if (!subjectIsCurrent) return "drop";
+  const placement = cue.placement ?? (cue.purpose === "opening" ? "opening_intro"
+    : cue.purpose === "back_announce" || cue.purpose === "handoff_setup" ? "handoff"
+    : cue.purpose === "mid_track_observation" ? "mid_track"
+    : "clean_bed");
+  const cueTargetsPlayback = Boolean(cue.trackId && state.playback.trackId === cue.trackId);
 
-  if (cue.purpose === "opening") {
-    if (!state.playback.trackId) return "wait";
-    const window = state.playback.presentationMap?.safeMicWindows.find((candidate) => candidate.kind === "intro");
-    if (!window) return state.playback.playheadMs > 30_000 ? "drop" : "wait";
-    const latestStart = window.endMs - cue.durationMs - SPEECH_WINDOW_TAIL_MS;
-    if (state.playback.playheadMs > latestStart + SPEECH_WINDOW_LEAD_MS) return "drop";
-    const target = Math.max(window.startMs, latestStart);
-    return playbackBuffered && state.playback.playheadMs + SPEECH_WINDOW_LEAD_MS >= target ? "play" : "wait";
+  if (placement === "immediate_transition") {
+    if (state.transition.status === "failed" || remainingMs <= 0) return "drop";
+    return transitionBuffered ? "play" : waitedMs >= MAX_PREPARED_SPEECH_WAIT_MS ? "drop" : "wait";
   }
 
-  if (cue.purpose === "listener_acknowledgement") {
-    const resolution = state.pendingUser?.resolution;
-    if (resolution === "immediate" || resolution === "next") {
-      if (state.transition.status === "failed" || remainingMs <= 0) return "drop";
-      return transitionBuffered ? "play" : waitedMs >= MAX_PREPARED_SPEECH_WAIT_MS ? "drop" : "wait";
-    }
-    if (state.transition.status !== "none") return waitedMs >= MAX_PREPARED_SPEECH_WAIT_MS ? "drop" : "wait";
-  }
+  if (placement === "opening_intro" && cue.trackId && state.playback.trackId !== cue.trackId) return "wait";
 
-  if (cue.purpose === "back_announce" || cue.purpose === "handoff_setup") {
-    if (state.nextTrack.status === "none" || state.nextTrack.status === "failed") return "drop";
-    if (state.nextTrack.status !== "ready") return "wait";
+  if (placement === "handoff") {
     if (transitionBuffered) return "play";
+    if (!cueTargetsPlayback && state.nextTrack.status !== "ready") return state.nextTrack.status === "failed" ? "drop" : "wait";
   }
 
-  const allowedKinds = cue.purpose === "back_announce" || cue.purpose === "handoff_setup" ? ["outro"]
-    : cue.purpose === "mid_track_observation" ? ["instrumental", "vocal_gap"]
-    : ["intro", "instrumental", "vocal_gap", "outro"];
+  const allowedKinds = placement === "opening_intro" ? ["intro"]
+    : placement === "handoff" && cue.trackId === state.playback.trackId ? ["intro"]
+    : placement === "handoff" ? ["outro"]
+    : placement === "mid_track" ? ["instrumental"]
+    : ["intro", "instrumental", "outro"];
   const window = state.playback.presentationMap?.safeMicWindows.find((candidate) => {
     if (!allowedKinds.includes(candidate.kind)) return false;
-    const effectiveStart = cue.purpose === "mid_track_observation" ? Math.max(candidate.startMs, MID_TRACK_CUE_EDGE_MS) : candidate.startMs;
-    const effectiveEnd = cue.purpose === "mid_track_observation"
+    const effectiveStart = placement === "mid_track" ? Math.max(candidate.startMs, MID_TRACK_CUE_EDGE_MS) : candidate.startMs;
+    const effectiveEnd = placement === "mid_track"
       ? Math.min(candidate.endMs, (state.playback.durationMs ?? candidate.endMs) - MID_TRACK_CUE_EDGE_MS)
       : candidate.endMs;
     const latestStart = effectiveEnd - cue.durationMs! - SPEECH_WINDOW_TAIL_MS;
     if (latestStart < effectiveStart) return false;
     return state.playback.playheadMs <= latestStart + SPEECH_WINDOW_LEAD_MS;
   });
-  if (!window) return waitedMs >= MAX_PREPARED_SPEECH_WAIT_MS || remainingMs <= cue.durationMs + SPEECH_WINDOW_TAIL_MS ? "drop" : "wait";
-  const effectiveStart = cue.purpose === "mid_track_observation" ? Math.max(window.startMs, MID_TRACK_CUE_EDGE_MS) : window.startMs;
-  const effectiveEnd = cue.purpose === "mid_track_observation"
+  if (!window) {
+    if ((placement === "opening_intro" || (placement === "handoff" && cueTargetsPlayback)) && state.playback.playheadMs > 30_000) return "drop";
+    if (placement === "handoff" || placement === "opening_intro") return "wait";
+    return waitedMs >= MAX_PREPARED_SPEECH_WAIT_MS || remainingMs <= cue.durationMs + SPEECH_WINDOW_TAIL_MS ? "drop" : "wait";
+  }
+  const effectiveStart = placement === "mid_track" ? Math.max(window.startMs, MID_TRACK_CUE_EDGE_MS) : window.startMs;
+  const effectiveEnd = placement === "mid_track"
     ? Math.min(window.endMs, (state.playback.durationMs ?? window.endMs) - MID_TRACK_CUE_EDGE_MS)
     : window.endMs;
-  const target = cue.purpose === "back_announce" || cue.purpose === "handoff_setup"
+  const target = placement === "handoff" || placement === "opening_intro"
     ? Math.max(effectiveStart, effectiveEnd - cue.durationMs - SPEECH_WINDOW_TAIL_MS)
     : effectiveStart;
   return playbackBuffered && state.playback.playheadMs + SPEECH_WINDOW_LEAD_MS >= target ? "play" : "wait";
 }
 
 function prepareCue(state: StationState, at: number): Reduction | null {
-  const cue = state.dj.pending;
-  if (!cue || state.dj.speaking || state.dj.prepared) return null;
+  const published = publishCueText(state, at);
+  const cue = published.dj.pending;
+  if (!cue) return null;
+  if (published.dj.speaking || published.dj.prepared) {
+    return published === state ? null : { state: published, commands: [] };
+  }
   const subjectIsCurrent = !cue.trackId || cue.trackId === state.nextTrack.trackId || cue.trackId === state.playback.trackId;
   if (cue.revision !== state.intentRevision || !subjectIsCurrent) {
-    return { state: { ...state, dj: { ...state.dj, pending: undefined } }, commands: [] };
+    return { state: { ...published, dj: { ...published.dj, pending: undefined } }, commands: [] };
   }
-  if (state.dj.muted) {
+  if (published.dj.muted) {
     return {
-      state: {
-        ...state,
-        dj: { ...state.dj, pending: undefined },
-        showState: rememberLink(state.showState, cue.linkFingerprint ?? `${cue.purpose}: direct concise link`),
-        recentDjLines: append(state.recentDjLines, cue.text, 12),
-        conversation: append(state.conversation, { role: "dj", text: cue.text, at }, 24)
-      },
+      state: { ...published, dj: { ...published.dj, pending: undefined } },
       commands: []
     };
   }
 
-  const cadence = state.showState.speechCadence;
+  const cadence = published.showState.speechCadence;
   const cooldownActive = cadence.lastCueAt !== null && at - cadence.lastCueAt < cadence.cooldownMs;
   const tooQuiet = cadence.sessionTalkativeness < cueTalkativenessThreshold(cue.purpose);
   const repeatedObservation = cue.purpose === "mid_track_observation" && cadence.lastCuePurpose === "mid_track_observation";
   if (cooldownActive || tooQuiet || repeatedObservation) {
-    return { state: { ...state, dj: { ...state.dj, pending: undefined } }, commands: [] };
+    return { state: { ...published, dj: { ...published.dj, pending: undefined } }, commands: [] };
   }
 
   return {
     state: {
-      ...state,
-      showState: rememberLink(state.showState, cue.linkFingerprint ?? `${cue.purpose}: direct concise link`),
+      ...published,
       dj: {
-        ...state.dj,
+        ...published.dj,
         pending: undefined,
         prepared: { ...cue, linkFingerprint: cue.linkFingerprint ?? `${cue.purpose}: direct concise link`, status: "preparing" }
       }
@@ -710,8 +805,20 @@ function advanceProgramme(state: StationState, at: number): Reduction {
   if (state.phase === "handoff") return { state, commands: [] };
   const remainingMs = state.playback.remainingMs ?? Infinity;
 
-  if (!state.playback.trackId && state.nextTrack.status === "ready" && state.nextTrack.trackId) {
+  if (!state.playback.trackId && state.openingImaging.status === "ready" && state.openingImaging.trackId) {
+    return { state: { ...state, phase: "handoff" }, commands: [{ type: "PLAY_TRACK", trackId: state.openingImaging.trackId, durationMs: 250 }] };
+  }
+
+  if (!state.playback.trackId && state.openingImaging.status === "failed" && state.nextTrack.status === "ready" && state.nextTrack.trackId) {
     return { state: { ...state, phase: "handoff" }, commands: [{ type: "PLAY_TRACK", trackId: state.nextTrack.trackId, durationMs: 500 }] };
+  }
+
+  if (state.playback.role === "opening_imaging" && state.nextTrack.status === "ready" && state.nextTrack.trackId && !state.dj.speaking) {
+    const outro = state.playback.presentationMap?.safeMicWindows.find((window) => window.kind === "outro");
+    const atHandoff = outro
+      ? state.playback.playheadMs + SPEECH_WINDOW_LEAD_MS >= Math.max(outro.startMs, outro.endMs - NORMAL_CROSSFADE_MS)
+      : remainingMs <= NORMAL_CROSSFADE_MS + 1_000;
+    if (atHandoff) return handoff(state);
   }
 
   if (state.transition.status === "ready" && state.transition.transitionId) {
@@ -721,7 +828,20 @@ function advanceProgramme(state: StationState, at: number): Reduction {
         commands: [{ type: "PLAY_TRANSITION", transitionId: state.transition.transitionId, durationMs: IMMEDIATE_CROSSFADE_MS, minimumPlayMs: TRANSITION_MINIMUM_PLAY_MS }]
       };
     }
-    if (remainingMs <= UNDERRUN_THREAT_MS) {
+    const committedNext = userCommittedNextTransition(state);
+    if (committedNext && naturalTransitionDue(state, remainingMs)) {
+      const ending = state.playback.presentationMap?.endStyle;
+      return {
+        state: { ...state, transition: { ...state.transition, status: "starting" } },
+        commands: [{
+          type: "PLAY_TRANSITION",
+          transitionId: state.transition.transitionId,
+          durationMs: ending === "cold" || ending === "resolved" ? 250 : NORMAL_CROSSFADE_MS,
+          minimumPlayMs: TRANSITION_MINIMUM_PLAY_MS
+        }]
+      };
+    }
+    if (!committedNext && remainingMs <= UNDERRUN_THREAT_MS) {
       return {
         state: { ...state, transition: { ...state.transition, status: "starting" } },
         commands: [{ type: "PLAY_TRANSITION", transitionId: state.transition.transitionId, durationMs: remainingMs <= 0 ? 250 : NORMAL_CROSSFADE_MS, minimumPlayMs: TRANSITION_MINIMUM_PLAY_MS }]
@@ -751,7 +871,7 @@ function advanceProgramme(state: StationState, at: number): Reduction {
     return handoff(state);
   }
 
-  if (state.nextTrack.status === "ready" && state.transition.status === "none" && remainingMs <= NORMAL_CROSSFADE_MS + 1_000) {
+  if (state.playback.role !== "opening_imaging" && state.nextTrack.status === "ready" && state.transition.status === "none" && remainingMs <= NORMAL_CROSSFADE_MS + 1_000) {
     return handoff(state);
   }
 
@@ -783,16 +903,22 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
   switch (event.type) {
     case "START_STATION": {
       const fresh = createInitialState(state.dj.muted);
+      const imaging = compileOpeningImagingSpec(event.sessionId, 1, fresh.showState.presenter.name);
       next = {
         ...fresh,
+        phase: "generating_next",
         running: true,
         intentRevision: 1,
         startup: { requestId: event.sessionId, message: event.message, status: "planning" },
+        openingImaging: { status: "generating", trackId: imaging.id, revision: imaging.revision, spec: imaging, bufferedMs: 0, generatedMs: 0 },
         autonomy: { lastListenerAt: event.at, tracksSinceListener: 0, mode: "interactive" },
         recentUserMessages: [event.message],
         conversation: [{ role: "listener", text: event.message, at: event.at }]
       };
-      commands = [{ type: "PLAN_INITIAL_INTENT", input: { requestId: event.sessionId, message: event.message, showState: fresh.showState } }];
+      commands = [
+        { type: "GENERATE_TRACK", spec: imaging },
+        { type: "PLAN_INITIAL_INTENT", input: { requestId: event.sessionId, message: event.message, showState: fresh.showState } }
+      ];
       break;
     }
     case "STOP_STATION":
@@ -838,7 +964,7 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
     case "INITIAL_INTENT_RECEIVED": {
       if (state.startup?.requestId !== event.requestId) break;
       const direction = event.plan.musicalDirection;
-      const spec = compileTrackSpec(`${event.requestId}-opening`, state.intentRevision, planDirective(event.plan), direction.intent, event.requestId);
+      const spec = compileTrackSpec(`${event.requestId}-first-track`, state.intentRevision, planDirective(event.plan), direction.intent, event.requestId);
       const stationElements = compileStationElements(event.requestId, state.intentRevision, state.showState.presenter.name);
       next = {
         ...state,
@@ -874,7 +1000,13 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
         horizonRequestId: interruptedHorizonPlan ? state.continuityPlanRequestId : state.horizonRequestId,
         dj: { ...state.dj, pending: undefined },
         autonomy: { lastListenerAt: event.at, tracksSinceListener: 0, mode: "interactive" },
-        pendingUser: { requestId: event.requestId, revision, message: event.message, applied: false },
+        pendingUser: {
+          requestId: event.requestId,
+          revision,
+          message: event.message,
+          applied: false,
+          nearHorizonAtRequest: (state.playback.remainingMs ?? Infinity) <= NEXT_TRACK_HORIZON_MS + NEXT_TRACK_REQUEST_GUARD_MS || state.nextTrack.status !== "none"
+        },
         recentUserMessages: append(state.recentUserMessages, event.message, 12),
         conversation: append(state.conversation, { role: "listener", text: event.message, at: event.at }, 24)
       };
@@ -917,6 +1049,17 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
     case "CONTINUITY_PLAN_RECEIVED": {
       if (state.continuityPlanRequestId !== event.requestId) break;
       const spec = compileHorizonTrackSpec(`${event.requestId}-track`, state.intentRevision, planDirective(event.plan), state.intent, event.requestId);
+      const listenerSilenceMs = state.autonomy.lastListenerAt === null
+        ? 0
+        : Math.max(0, event.at - state.autonomy.lastListenerAt);
+      const speechSilenceMs = state.showState.speechCadence.lastCueAt === null
+        ? null
+        : Math.max(0, event.at - state.showState.speechCadence.lastCueAt);
+      const cueAuthorized = shouldAuthorizeAutonomousCue({
+        mode: state.autonomy.mode,
+        listenerSilenceMs,
+        speechSilenceMs
+      });
       next = {
         ...state, continuityPlanRequestId: undefined,
         showState: applyShowMemory(
@@ -925,7 +1068,10 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
           state.showState.musicalThesis.current,
           productionFingerprint(planDirective(event.plan))
         ),
-        dj: { ...state.dj, pending: plannedCue(event.plan, `cue-${event.requestId}`, state.intentRevision, spec.id) },
+        dj: {
+          ...state.dj,
+          pending: cueAuthorized ? plannedCue(event.plan, `cue-${event.requestId}`, state.intentRevision, spec.id) : undefined
+        },
         nextTrack: { status: "generating", trackId: spec.id, revision: spec.revision, spec, bufferedMs: 0, generatedMs: 0 }
       };
       commands = [{ type: "GENERATE_TRACK", spec }];
@@ -935,16 +1081,26 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
       if (state.continuityPlanRequestId === event.requestId) next = { ...state, phase: "error", error: event.error };
       break;
     case "TRACK_GENERATION_STARTED":
-      if (eventMatchesNext(state, event.trackId, event.revision)) next = { ...state, nextTrack: { ...state.nextTrack, status: "generating", spec: event.spec } };
+      if (eventMatchesOpeningImaging(state, event.trackId, event.revision)) next = { ...state, openingImaging: { ...state.openingImaging, status: "generating", spec: event.spec } };
+      else if (eventMatchesNext(state, event.trackId, event.revision)) next = { ...state, nextTrack: { ...state.nextTrack, status: "generating", spec: event.spec } };
       break;
     case "TRACK_FIRST_AUDIO":
-      if (eventMatchesNext(state, event.trackId, event.revision)) next = { ...state, nextTrack: { ...state.nextTrack, status: "buffering", firstAudioMs: event.latencyMs } };
+      if (eventMatchesOpeningImaging(state, event.trackId, event.revision)) next = { ...state, openingImaging: { ...state.openingImaging, status: "buffering", firstAudioMs: event.latencyMs } };
+      else if (eventMatchesNext(state, event.trackId, event.revision)) next = { ...state, nextTrack: { ...state.nextTrack, status: "buffering", firstAudioMs: event.latencyMs } };
       break;
     case "TRACK_BUFFER_UPDATED":
-      if (eventMatchesNext(state, event.trackId, event.revision)) next = { ...state, nextTrack: { ...state.nextTrack, status: state.nextTrack.status === "ready" ? "ready" : "buffering", bufferedMs: event.bufferedMs, generatedMs: event.generatedMs, generationRate: event.generationRate } };
+      if (eventMatchesOpeningImaging(state, event.trackId, event.revision)) {
+        next = { ...state, openingImaging: { ...state.openingImaging, status: state.openingImaging.status === "ready" ? "ready" : "buffering", bufferedMs: event.bufferedMs, generatedMs: event.generatedMs, generationRate: event.generationRate } };
+      } else if (eventMatchesNext(state, event.trackId, event.revision)) {
+        next = { ...state, nextTrack: { ...state.nextTrack, status: state.nextTrack.status === "ready" ? "ready" : "buffering", bufferedMs: event.bufferedMs, generatedMs: event.generatedMs, generationRate: event.generationRate } };
+      }
       break;
     case "TRACK_DURATION_RESOLVED":
-      if (eventMatchesNext(state, event.trackId, event.revision) && state.nextTrack.spec) next = { ...state, nextTrack: { ...state.nextTrack, spec: { ...state.nextTrack.spec, durationMs: event.durationMs } } };
+      if (eventMatchesOpeningImaging(state, event.trackId, event.revision) && state.openingImaging.spec) {
+        next = { ...state, openingImaging: { ...state.openingImaging, spec: { ...state.openingImaging.spec, durationMs: event.durationMs } } };
+      } else if (eventMatchesNext(state, event.trackId, event.revision) && state.nextTrack.spec) {
+        next = { ...state, nextTrack: { ...state.nextTrack, spec: { ...state.nextTrack.spec, durationMs: event.durationMs } } };
+      }
       break;
     case "TRACK_LYRIC_TIMESTAMPS_RECEIVED":
       if (state.playback.trackId === event.trackId && state.playback.durationMs !== null) {
@@ -959,11 +1115,22 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
       }
       break;
     case "TRACK_READY": {
-      if (!eventMatchesNext(state, event.trackId, event.revision)) break;
-      next = { ...state, nextTrack: { ...state.nextTrack, status: "ready" } };
+      if (eventMatchesOpeningImaging(state, event.trackId, event.revision)) {
+        next = { ...state, openingImaging: { ...state.openingImaging, status: "ready" } };
+      } else if (eventMatchesNext(state, event.trackId, event.revision)) {
+        next = { ...state, nextTrack: { ...state.nextTrack, status: "ready" } };
+      }
       break;
     }
     case "TRACK_GENERATION_FAILED": {
+      if (eventMatchesOpeningImaging(state, event.trackId, event.revision)) {
+        next = {
+          ...state,
+          openingImaging: { ...state.openingImaging, status: "failed", error: event.error },
+          ...(isProviderAllowanceExhausted(event.error) ? { error: event.error } : {})
+        };
+        break;
+      }
       if (!eventMatchesNext(state, event.trackId, event.revision) || !state.nextTrack.spec) break;
       if (!isRepairableTrackRejection(event.error)) {
         next = { ...state, nextTrack: { ...state.nextTrack, status: "failed", error: event.error }, error: event.error };
@@ -1034,7 +1201,11 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
       break;
     case "TTS_PREPARATION_FAILED":
       if (state.dj.prepared?.speechId !== event.speechId) break;
-      next = { ...state, dj: { ...state.dj, prepared: undefined, speaking: false, speechId: undefined } };
+      next = {
+        ...state,
+        dj: { ...state.dj, prepared: undefined, speaking: false, speechId: undefined },
+        ...(isProviderAllowanceExhausted(event.error) ? { error: event.error } : {})
+      };
       break;
     case "TTS_STARTED":
       if (state.dj.muted || state.dj.speechId !== event.speechId) break;
@@ -1056,6 +1227,7 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
     case "CART_GENERATION_FAILED":
       next = {
         ...state,
+        ...(isProviderAllowanceExhausted(event.error) ? { error: event.error } : {}),
         carts: {
           ...state.carts,
           entries: state.carts.entries.map((entry) => entry.id === event.cartId ? { ...entry, status: "failed", error: event.error } : entry)
@@ -1071,7 +1243,27 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
       next = { ...state, carts: { ...state.carts, playingId: undefined } };
       break;
     case "TRACK_STARTED": {
-      if (state.nextTrack.trackId !== event.trackId) break;
+      const openingImagingStarted = state.openingImaging.trackId === event.trackId && event.spec.role === "opening_imaging";
+      if (!openingImagingStarted && state.nextTrack.trackId !== event.trackId) break;
+      if (openingImagingStarted) {
+        next = {
+          ...state,
+          phase: "playing",
+          playback: {
+            trackId: event.trackId, role: "opening_imaging", title: event.spec.title, playheadMs: 0,
+            durationMs: event.spec.durationMs, remainingMs: event.spec.durationMs,
+            bpm: event.spec.bpm, key: event.spec.key, styleSummary: event.spec.description, energy: event.spec.energy,
+            styles: event.spec.styles, mood: event.spec.mood, vocals: event.spec.vocals, sections: event.spec.sections,
+            editorialNotes: event.spec.editorialNotes,
+            presentationMap: buildTrackPresentationMap(event.trackId, event.spec.durationMs, event.spec.sections),
+            bufferedMs: state.openingImaging.bufferedMs
+          },
+          openingImaging: emptyNext(),
+          horizonFiredForTrackId: null,
+          error: undefined
+        };
+        break;
+      }
       const cartsToGenerate = state.carts.entries.filter((entry) => entry.status === "registered" && !(state.dj.muted && entry.kind === "id"));
       const cartIdsToGenerate = new Set(cartsToGenerate.map((entry) => entry.id));
       if (cartsToGenerate.length) {
@@ -1088,14 +1280,14 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
           }
         }));
       }
-      if (state.playback.trackId && state.playback.title) {
+      if (state.playback.trackId && state.playback.title && state.playback.role !== "opening_imaging") {
         next = { ...state, recentTracks: append(state.recentTracks, { trackId: state.playback.trackId, title: state.playback.title, description: state.playback.styleSummary ?? "", bpm: state.playback.bpm, key: state.playback.key, energy: state.playback.energy }, 12) };
       }
       next = {
         ...next,
         phase: "playing",
         playback: {
-          trackId: event.trackId, title: event.spec.title, playheadMs: 0, durationMs: event.spec.durationMs, remainingMs: event.spec.durationMs,
+          trackId: event.trackId, role: "programme", title: event.spec.title, playheadMs: 0, durationMs: event.spec.durationMs, remainingMs: event.spec.durationMs,
           bpm: event.spec.bpm, key: event.spec.key, styleSummary: event.spec.description, energy: event.spec.energy,
           styles: event.spec.styles, mood: event.spec.mood, vocals: event.spec.vocals, sections: event.spec.sections,
           editorialNotes: event.spec.editorialNotes,
@@ -1103,6 +1295,7 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
           bufferedMs: state.nextTrack.bufferedMs
         },
         nextTrack: emptyNext(),
+        openingImaging: emptyNext(),
         transition: emptyTransition(),
         horizonFiredForTrackId: null,
         horizonRequestId: undefined,
@@ -1132,6 +1325,7 @@ export function reduce(state: StationState, event: StationEvent): Reduction {
       break;
   }
 
+  next = publishCueText(next, event.at);
   const advanced = advanceProgramme(next, event.at);
   return finish(advanced.state, event, [...commands, ...advanced.commands]);
 }

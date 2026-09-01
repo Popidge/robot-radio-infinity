@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { MusicalIntent, ProducerPlan, StationEvent, StationState, TrackDirective, TrackSpec } from "@robot-radio/eleven-shared";
-import { NORMAL_CROSSFADE_MS, UNDERRUN_THREAT_MS, compileTrackSpec, reduce } from "./reducer";
+import type { MusicalIntent, ProducerPlan, StationCommand, StationEvent, StationState, TrackDirective, TrackSpec } from "@robot-radio/eleven-shared";
+import { NORMAL_CROSSFADE_MS, TRANSITION_MINIMUM_PLAY_MS, UNDERRUN_THREAT_MS, compileTrackSpec, reduce } from "./reducer";
 import { createInitialState } from "./state";
 import { makeProducerPlan } from "./test-support";
 import { buildTrackPresentationMap } from "./presentation-map";
@@ -84,10 +84,19 @@ function event<T extends Omit<StationEvent, "at">>(value: T, at = 1_000): Statio
   return { ...value, at } as StationEvent;
 }
 
+function commandsOfType<T extends StationCommand["type"]>(commands: StationCommand[], type: T): Extract<StationCommand, { type: T }>[] {
+  return commands.filter((command): command is Extract<StationCommand, { type: T }> => command.type === type);
+}
+
 describe("ElevenLabs station reducer", () => {
   it("carries one opening ProducerPlan through memory, composition, and the first playable cue window", () => {
     const started = reduce(createInitialState(), event({ type: "START_STATION", sessionId: "start-1", message: "rainy synth soul" }));
-    expect(started.commands.map((command) => command.type)).toEqual(["PLAN_INITIAL_INTENT"]);
+    expect(started.commands.map((command) => command.type)).toEqual(["GENERATE_TRACK", "PLAN_INITIAL_INTENT"]);
+    const imagingSpec = commandsOfType(started.commands, "GENERATE_TRACK")[0]!.spec;
+    expect(imagingSpec).toMatchObject({ role: "opening_imaging", durationMs: 30_000, programmeId: "start-1" });
+    expect(JSON.stringify(imagingSpec)).not.toContain("rainy synth soul");
+    expect(imagingSpec.sections?.map((section) => section.durationMs)).toEqual([5_000, 19_000, 6_000]);
+    expect(imagingSpec.sections?.[0]?.lyrics).toBe("Robot Radio Infinity");
 
     const openingSections = [
       { name: "Instrumental intro", durationMs: 8_000, description: "Sparse presenter ramp", transitionFriendly: true },
@@ -114,6 +123,7 @@ describe("ElevenLabs station reducer", () => {
     expect(planned.state.nextTrack.spec?.editorialNotes).toEqual(openingPlan.editorialNotes);
     expect(planned.state.showState.listener.preferences).toEqual(["rainy synth soul"]);
     expect(planned.state.showState.musicalThesis.current).toBe("A rain-soaked late-night soul transmission");
+    expect(planned.state.showState.recentProductionFingerprints.at(-1)).toContain("Wet Neon");
     expect(planned.state.showState.recentLinkFingerprints).toEqual(["opening: direct concise link"]);
     expect(planned.commands.some((command) => command.type === "PLAY_SPEECH")).toBe(false);
     expect(planned.commands.map((command) => command.type)).toContain("PREPARE_SPEECH");
@@ -122,12 +132,32 @@ describe("ElevenLabs station reducer", () => {
     const revision = planned.state.nextTrack.revision!;
     let state = reduce(planned.state, event({ type: "TTS_PREPARED", speechId: "cue-start-1", durationMs: 2_000 }, 2_000)).state;
     state = reduce(state, event({
+      type: "TRACK_BUFFER_UPDATED", trackId: imagingSpec.id, revision: imagingSpec.revision, bufferedMs: 12_000, generatedMs: 15_000, generationRate: 4
+    })).state;
+    const imagingReady = reduce(state, event({ type: "TRACK_READY", trackId: imagingSpec.id, revision: imagingSpec.revision }));
+    expect(imagingReady.commands).toEqual([{ type: "PLAY_TRACK", trackId: imagingSpec.id, durationMs: 250 }]);
+    const imagingStarted = reduce(imagingReady.state, event({ type: "TRACK_STARTED", trackId: imagingSpec.id, revision: imagingSpec.revision, spec: imagingSpec }));
+    expect(imagingStarted.commands).toEqual([]);
+    expect(imagingStarted.state.playback.role).toBe("opening_imaging");
+    expect(imagingStarted.state.nextTrack.trackId).toBe(trackId);
+
+    state = imagingStarted.state;
+    state = reduce(state, event({
       type: "TRACK_BUFFER_UPDATED", trackId, revision, bufferedMs: 12_000, generatedMs: 15_000, generationRate: 4
     })).state;
     const ready = reduce(state, event({ type: "TRACK_READY", trackId, revision }));
-    expect(ready.commands.map((command) => command.type)).toEqual(["PLAY_TRACK"]);
-    const audible = reduce(ready.state, event({ type: "TRACK_STARTED", trackId, revision, spec: planned.state.nextTrack.spec! }));
+    expect(ready.commands).toEqual([]);
+    const beforeHandoff = reduce(ready.state, event({
+      type: "TRACK_PROGRESS", trackId: imagingSpec.id, playheadMs: 26_700, remainingMs: 3_300, bufferedMs: 12_000
+    }));
+    expect(beforeHandoff.commands).toEqual([]);
+    const handoff = reduce(beforeHandoff.state, event({
+      type: "TRACK_PROGRESS", trackId: imagingSpec.id, playheadMs: 26_900, remainingMs: 3_100, bufferedMs: 12_000
+    }));
+    expect(handoff.commands).toEqual([{ type: "FADE", from: "track", to: "track", trackId, durationMs: NORMAL_CROSSFADE_MS }]);
+    const audible = reduce(handoff.state, event({ type: "TRACK_STARTED", trackId, revision, spec: planned.state.nextTrack.spec! }));
     expect(audible.commands.map((command) => command.type)).toEqual(["GENERATE_CART", "GENERATE_CART"]);
+    expect(audible.state.recentTracks).toEqual([]);
     const ramp = reduce(audible.state, event({
       type: "TRACK_PROGRESS", trackId, playheadMs: 5_600, remainingMs: 174_400, bufferedMs: 12_000
     }, 8_000));
@@ -230,6 +260,87 @@ describe("ElevenLabs station reducer", () => {
     }));
     expect(resolved.commands.map((command) => command.type)).toEqual(["GENERATE_TRANSITION", "GENERATE_TRACK"]);
     expect(resolved.state.pendingUser?.resolution).toBe("next");
+  });
+
+  it("prepares a next-track bridge without authorizing it to interrupt the current song", () => {
+    const base = playingState(55_000);
+    const resolvedSections = [{
+      name: "Final chorus and resolved ending",
+      durationMs: 180_000,
+      description: "Finish on one clean resolved final chord; no fade.",
+      lyrics: "Hold the final signal"
+    }];
+    let state = reduce({
+      ...base,
+      playback: {
+        ...base.playback,
+        sections: resolvedSections,
+        presentationMap: buildTrackPresentationMap("current", 180_000, resolvedSections)
+      }
+    }, event({ type: "USER_MESSAGE", requestId: "next-safe", message: "Make the next one much heavier." })).state;
+    state = reduce(state, event({
+      type: "URGENCY_ASSESSMENT_RECEIVED",
+      requestId: "next-safe",
+      assessment: { timing: "next_track", interruptCurrentTrack: false, confidence: 0.99 }
+    })).state;
+    state = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "next-safe", plan })).state;
+    const transitionId = state.transition.transitionId!;
+
+    const readyEarly = reduce(state, event({ type: "TRANSITION_READY", transitionId, revision: state.intentRevision }));
+    expect(readyEarly.commands).toEqual([]);
+    expect(readyEarly.state.transition.status).toBe("ready");
+
+    const stillPlaying = reduce(readyEarly.state, event({
+      type: "TRACK_PROGRESS",
+      trackId: "current",
+      playheadMs: 165_000,
+      remainingMs: UNDERRUN_THREAT_MS,
+      bufferedMs: 30_000
+    }));
+    expect(stillPlaying.commands).toEqual([]);
+
+    const finalChord = reduce(stillPlaying.state, event({
+      type: "TRACK_PROGRESS",
+      trackId: "current",
+      playheadMs: 176_000,
+      remainingMs: NORMAL_CROSSFADE_MS + 1_000,
+      bufferedMs: 20_000
+    }));
+    expect(finalChord.commands).toEqual([]);
+
+    const handoffDue = reduce(finalChord.state, event({
+      type: "TRACK_PROGRESS",
+      trackId: "current",
+      playheadMs: 180_000,
+      remainingMs: 0,
+      bufferedMs: 0
+    }));
+    expect(handoffDue.commands).toEqual([{
+      type: "PLAY_TRANSITION",
+      transitionId,
+      durationMs: 250,
+      minimumPlayMs: TRANSITION_MINIMUM_PLAY_MS
+    }]);
+  });
+
+  it("keeps next-track promotion tied to the moment the listener spoke", () => {
+    let state = reduce(playingState(67_000), event({ type: "USER_MESSAGE", requestId: "slow-plan", message: "For the next song, make it heavier." })).state;
+    state = reduce(state, event({
+      type: "TRACK_PROGRESS", trackId: "current", playheadMs: 130_000, remainingMs: 50_000, bufferedMs: 60_000
+    })).state;
+    state = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "slow-plan", plan })).state;
+    const resolved = reduce(state, event({
+      type: "URGENCY_ASSESSMENT_RECEIVED",
+      requestId: "slow-plan",
+      assessment: { timing: "next_track", interruptCurrentTrack: false, confidence: 0.99 }
+    }));
+
+    expect(resolved.commands).toEqual([]);
+    expect(resolved.state.pendingUser).toMatchObject({ resolution: "deferred", nearHorizonAtRequest: false });
+    expect(resolved.state.transition.status).toBe("none");
+
+    const horizon = reduce(resolved.state, event({ type: "NEXT_TRACK_HORIZON", requestId: "slow-plan-horizon", trackId: "current" }));
+    expect(horizon.commands.map((command) => command.type)).toEqual(["GENERATE_TRACK"]);
   });
 
   it("generates an emergency transition when a pending stream threatens underrun", () => {
@@ -400,6 +511,7 @@ describe("ElevenLabs station reducer", () => {
           speechId: "cue-old",
           text: "Coming up: the track that no longer exists.",
           purpose: "handoff_setup",
+          placement: "handoff",
           revision: 1,
           trackId: "discarded-track"
         }
@@ -430,6 +542,7 @@ describe("ElevenLabs station reducer", () => {
           speechId: "cue-buffered-ack",
           text: "I’ll hold this feeling a little longer.",
           purpose: "listener_acknowledgement",
+          placement: "clean_bed",
           revision: 1
         }
       }
@@ -448,6 +561,99 @@ describe("ElevenLabs station reducer", () => {
     expect(safe.commands.map((command) => command.type)).toEqual(["PLAY_SPEECH"]);
   });
 
+  it("publishes DJ text immediately even when cadence suppresses its voice", () => {
+    const acknowledgement = "I hear it. I’ll keep the voltage exactly there.";
+    const conversationPlan = makeProducerPlan(intent, nextDirective, {
+      onAirCue: { text: acknowledgement, purpose: "listener_acknowledgement" },
+      suggestedTiming: "conversation_only"
+    });
+    const base = playingState();
+    let state: StationState = {
+      ...base,
+      showState: {
+        ...base.showState,
+        speechCadence: { ...base.showState.speechCadence, lastCueAt: 10_000 }
+      }
+    };
+    state = reduce(state, event({ type: "USER_MESSAGE", requestId: "text-now", message: "Keep this exact energy." }, 20_000)).state;
+    state = reduce(state, event({ type: "USER_PLAN_RECEIVED", requestId: "text-now", plan: conversationPlan }, 21_000)).state;
+    const resolved = reduce(state, event({
+      type: "URGENCY_ASSESSMENT_RECEIVED",
+      requestId: "text-now",
+      assessment: { timing: "conversation_only", interruptCurrentTrack: false, confidence: 0.99 }
+    }, 21_100));
+
+    expect(resolved.commands).toEqual([]);
+    expect(resolved.state.dj.pending).toBeUndefined();
+    expect(resolved.state.conversation.at(-1)).toMatchObject({ role: "dj", text: acknowledgement });
+  });
+
+  it("does not treat a lyric-free chorus gap as permission for a next-track acknowledgement", () => {
+    const vocalSections = [
+      { name: "Chorus", durationMs: 115_000, description: "Full-power chorus with short breaths", lyrics: "Hold the line" },
+      { name: "Final verse", durationMs: 65_000, description: "Vocals continue to a resolved final chord", lyrics: "Bring it home" }
+    ];
+    const presentationMap = buildTrackPresentationMap("current", 180_000, vocalSections, [
+      { word: "line", startMs: 75_000, endMs: 102_500 },
+      { word: "Bring", startMs: 115_019, endMs: 130_000 },
+      { word: "home", startMs: 130_100, endMs: 177_139 }
+    ]);
+    expect(presentationMap.safeMicWindows.some((window) => window.kind === "vocal_gap")).toBe(true);
+    expect(presentationMap.safeMicWindows.some((window) => window.kind === "outro")).toBe(false);
+
+    const destination = compileTrackSpec("next-after-gap", 1, {
+      ...nextDirective,
+      sections: [
+        { name: "Instrumental intro", durationMs: 10_000, description: "Clean presenter ramp", transitionFriendly: true },
+        { name: "Song", durationMs: 170_000, description: "Full vocal track", lyrics: "New signal" }
+      ]
+    }, darkerIntent);
+    const base = playingState(80_000);
+    let state: StationState = {
+      ...base,
+      playback: { ...base.playback, playheadMs: 100_000, remainingMs: 80_000, sections: vocalSections, presentationMap },
+      nextTrack: { status: "ready", trackId: destination.id, revision: 1, spec: destination, bufferedMs: 20_000, generatedMs: 30_000 },
+      pendingUser: {
+        requestId: "next-gap",
+        revision: 1,
+        message: "Do that on the next track.",
+        urgency: { timing: "next_track", interruptCurrentTrack: false, confidence: 0.99 },
+        applied: true,
+        resolution: "deferred"
+      },
+      dj: {
+        muted: false,
+        speaking: false,
+        pending: {
+          speechId: "cue-next-gap",
+          text: "I’ll hold this one, then turn the next corner.",
+          purpose: "listener_acknowledgement",
+          placement: "handoff",
+          revision: 1,
+          trackId: destination.id
+        }
+      }
+    };
+
+    state = reduce(state, event({
+      type: "TRACK_PROGRESS", trackId: "current", playheadMs: 100_000, remainingMs: 80_000, bufferedMs: 80_000
+    }, 10_000)).state;
+    state = reduce(state, event({ type: "TTS_PREPARED", speechId: "cue-next-gap", durationMs: 2_000 }, 10_500)).state;
+    const inChorusGap = reduce(state, event({
+      type: "TRACK_PROGRESS", trackId: "current", playheadMs: 103_000, remainingMs: 77_000, bufferedMs: 77_000
+    }, 11_000));
+    expect(inChorusGap.commands).toEqual([]);
+    expect(inChorusGap.state.dj.prepared?.status).toBe("ready");
+
+    const destinationStarted = reduce(inChorusGap.state, event({
+      type: "TRACK_STARTED", trackId: destination.id, revision: 1, spec: destination
+    }, 12_000));
+    const intro = reduce(destinationStarted.state, event({
+      type: "TRACK_PROGRESS", trackId: destination.id, playheadMs: 7_500, remainingMs: 172_500, bufferedMs: 20_000
+    }, 19_500));
+    expect(intro.commands).toEqual([{ type: "PLAY_SPEECH", speechId: "cue-next-gap" }]);
+  });
+
   it("authorizes a handoff setup only inside the deterministic handoff window", () => {
     const spec = compileTrackSpec("teased-track", 1, nextDirective, darkerIntent);
     const state: StationState = {
@@ -460,7 +666,7 @@ describe("ElevenLabs station reducer", () => {
       dj: {
         muted: false,
         speaking: false,
-        pending: { speechId: "cue-tease", text: "The next room has heavier walls.", purpose: "handoff_setup", revision: 1, trackId: spec.id }
+        pending: { speechId: "cue-tease", text: "The next room has heavier walls.", purpose: "handoff_setup", placement: "handoff", revision: 1, trackId: spec.id }
       }
     };
 
@@ -494,6 +700,7 @@ describe("ElevenLabs station reducer", () => {
           speechId: "cue-mid-track",
           text: "That tiny bass hesitation is holding the whole track open.",
           purpose: "mid_track_observation",
+          placement: "mid_track",
           revision: 1
         }
       }
@@ -537,7 +744,7 @@ describe("ElevenLabs station reducer", () => {
       dj: {
         muted: false,
         speaking: false,
-        pending: { speechId: "cue-cooldown", text: "Still here.", purpose: "listener_acknowledgement", revision: 1 }
+        pending: { speechId: "cue-cooldown", text: "Still here.", purpose: "listener_acknowledgement", placement: "clean_bed", revision: 1 }
       }
     };
     const cooled = reduce(cooledState, event({
@@ -560,7 +767,7 @@ describe("ElevenLabs station reducer", () => {
       dj: {
         muted: false,
         speaking: false,
-        pending: { speechId: "cue-observation", text: "Notice how the pulse keeps folding.", purpose: "mid_track_observation", revision: 1 }
+        pending: { speechId: "cue-observation", text: "Notice how the pulse keeps folding.", purpose: "mid_track_observation", placement: "mid_track", revision: 1 }
       }
     };
     const repeated = reduce(repeatedObservation, event({
@@ -577,7 +784,7 @@ describe("ElevenLabs station reducer", () => {
       dj: {
         muted: false,
         speaking: false,
-        pending: { speechId: "cue-text-only", text, purpose: "mid_track_observation", revision: 1 }
+        pending: { speechId: "cue-text-only", text, purpose: "mid_track_observation", placement: "mid_track", revision: 1 }
       }
     };
 
@@ -610,7 +817,7 @@ describe("ElevenLabs station reducer", () => {
     expect(restarted.state.dj.muted).toBe(true);
   });
 
-  it("bounds producer memory without allowing a plan to rewrite presenter identity", () => {
+  it("bounds social memory without allowing a conversation-only plan to rewrite the presenter or programme", () => {
     const base = playingState();
     const presenter = structuredClone(base.showState.presenter);
     const seeded: StationState = {
@@ -652,7 +859,8 @@ describe("ElevenLabs station reducer", () => {
     expect(resolved.state.showState.listener.callbacks).toHaveLength(6);
     expect(resolved.state.showState.listener.callbacks.at(-1)).toBe("the rain room");
     expect(resolved.state.showState.recentProductionFingerprints).toHaveLength(8);
-    expect(resolved.state.showState.recentProductionFingerprints.at(-1)).toBe("new fingerprint");
+    expect(resolved.state.showState.recentProductionFingerprints.at(-1)).toBe("fingerprint-7");
+    expect(resolved.state.showState.musicalThesis).toEqual(seeded.showState.musicalThesis);
     expect(resolved.state.showState.speechCadence.sessionTalkativeness).toBe(0.62);
   });
 
@@ -755,7 +963,7 @@ describe("ElevenLabs station reducer", () => {
     const cruise = reduce(cruiseState, event({ type: "NEXT_TRACK_HORIZON", requestId: "cruise-horizon", trackId: "current" }, 100_000));
     expect(cruise.state.autonomy.mode).toBe("cruise");
     expect(cruise.commands.find((command) => command.type === "PLAN_CONTINUITY")?.input.autonomy).toEqual({
-      mode: "cruise", tracksSinceListener: 2, silenceMs: 99_000
+      mode: "cruise", tracksSinceListener: 2, silenceMs: 99_000, speechSilenceMs: null
     });
 
     const exploratoryState: StationState = {
@@ -767,5 +975,56 @@ describe("ElevenLabs station reducer", () => {
 
     const listener = reduce(exploratory.state, event({ type: "USER_MESSAGE", requestId: "back", message: "Give me sparkly J-pop next." }, 101_000));
     expect(listener.state.autonomy).toEqual({ lastListenerAt: 101_000, tracksSinceListener: 0, mode: "interactive" });
+  });
+
+  it("authorizes autonomous links only after the deterministic speech interval", () => {
+    const autonomousPlan = makeProducerPlan(intent, nextDirective, {
+      onAirCue: {
+        text: "That was Signals Through Glass, all soft edges and a pulse underneath.",
+        purpose: "back_announce",
+        linkFingerprint: "back-announces title and one production detail"
+      },
+      suggestedTiming: "continuity"
+    });
+    const base = playingState(49_000);
+    const recentCueState: StationState = {
+      ...base,
+      autonomy: { lastListenerAt: 0, tracksSinceListener: 2, mode: "interactive" },
+      showState: {
+        ...base.showState,
+        speechCadence: { ...base.showState.speechCadence, lastCueAt: 580_000, cuesSpoken: 2 }
+      }
+    };
+    const recentHorizon = reduce(recentCueState, event({
+      type: "NEXT_TRACK_HORIZON", requestId: "recent-cue", trackId: "current"
+    }, 600_000));
+    const suppressed = reduce(recentHorizon.state, event({
+      type: "CONTINUITY_PLAN_RECEIVED", requestId: "recent-cue", plan: autonomousPlan
+    }, 615_000));
+    expect(suppressed.state.autonomy.mode).toBe("cruise");
+    expect(suppressed.state.dj.pending).toBeUndefined();
+
+    const restedCueState: StationState = {
+      ...recentCueState,
+      showState: {
+        ...recentCueState.showState,
+        speechCadence: { ...recentCueState.showState.speechCadence, lastCueAt: 100_000 }
+      }
+    };
+    const restedHorizon = reduce(restedCueState, event({
+      type: "NEXT_TRACK_HORIZON", requestId: "rested-cue", trackId: "current"
+    }, 600_000));
+    const authorized = reduce(restedHorizon.state, event({
+      type: "CONTINUITY_PLAN_RECEIVED", requestId: "rested-cue", plan: autonomousPlan
+    }, 615_000));
+    expect(authorized.state.dj.prepared).toMatchObject({
+      purpose: "back_announce",
+      trackId: "rested-cue-track"
+    });
+    expect(authorized.commands).toContainEqual({
+      type: "PREPARE_SPEECH",
+      speechId: "cue-rested-cue",
+      text: autonomousPlan.onAirCue!.text
+    });
   });
 });

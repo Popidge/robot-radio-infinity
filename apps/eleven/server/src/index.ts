@@ -9,6 +9,7 @@ import {
   type MusicStream
 } from "@robot-radio/eleven-shared";
 import { WebSocket, WebSocketServer } from "ws";
+import { DemoAuth, sameOriginWebSocket } from "./auth/demo-auth";
 import { createDebugLogger } from "./debug/logger";
 import { createProviders } from "./providers";
 import { handleDebugRoute } from "./routes/debug";
@@ -38,6 +39,7 @@ async function sendBinary(webSocket: WebSocket, chunk: Uint8Array): Promise<void
 
 const port = Number(process.env.PORT ?? 8787);
 const logger = createDebugLogger();
+const demoAuth = new DemoAuth();
 const providers = (() => {
   try {
     return createProviders();
@@ -63,7 +65,7 @@ logger.log("info", "server.run_started", {
   }
 });
 
-const server = createServer(async (request, response) => {
+export const server = createServer(async (request, response) => {
   const requestId = randomUUID();
   const startedAt = performance.now();
   const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
@@ -80,11 +82,14 @@ const server = createServer(async (request, response) => {
 
   if (request.method === "OPTIONS") {
     response.writeHead(204, {
-      "access-control-allow-origin": "*",
-      "access-control-allow-headers": "content-type",
-      "access-control-allow-methods": "GET,POST,DELETE,OPTIONS"
+      allow: "GET, POST, DELETE, OPTIONS"
     });
     response.end();
+    return;
+  }
+  if (await demoAuth.handleRoute(url.pathname, request, response)) return;
+  if (url.pathname.startsWith("/api/") && !demoAuth.isAuthenticated(request)) {
+    demoAuth.reject(request, response);
     return;
   }
   if (url.pathname === "/api/health") {
@@ -305,7 +310,35 @@ webSocketServer.on("connection", async (webSocket, request) => {
   }
 });
 
+function rejectUpgrade(socket: Socket, status: 401 | 403 | 503, message: string): void {
+  const reason = status === 401 ? "Unauthorized" : status === 403 ? "Forbidden" : "Service Unavailable";
+  const body = JSON.stringify({ error: message });
+  socket.end(
+    `HTTP/1.1 ${status} ${reason}\r\n` +
+    "Content-Type: application/json; charset=utf-8\r\n" +
+    `Content-Length: ${Buffer.byteLength(body)}\r\n` +
+    "Connection: close\r\n\r\n" +
+    body
+  );
+}
+
 server.on("upgrade", (request, socket: Socket, head) => {
+  if (!sameOriginWebSocket(request)) {
+    logger.log("warn", "websocket.origin_rejected", { origin: request.headers.origin });
+    rejectUpgrade(socket, 403, "The WebSocket origin is not permitted.");
+    return;
+  }
+  if (!demoAuth.isAuthenticated(request)) {
+    logger.log("warn", "websocket.authentication_required", { configured: demoAuth.configured });
+    rejectUpgrade(
+      socket,
+      demoAuth.configured ? 401 : 503,
+      demoAuth.configured
+        ? "Enter the demo password before opening an audio stream."
+        : "This private demo is not configured yet."
+    );
+    return;
+  }
   webSocketServer.handleUpgrade(request, socket, head, (webSocket) => {
     webSocketServer.emit("connection", webSocket, request);
   });
@@ -336,8 +369,15 @@ process.once("exit", (code) => {
   logger.close();
 });
 
-server.listen(port, "0.0.0.0", () => {
-  logger.log("info", "server.listening", { port, webDistDirectory: webDistDirectory() });
-  console.log(`Robot Radio server listening on http://0.0.0.0:${port}`);
-  if (logger.filePath) console.log(`Structured debug log: ${logger.filePath}`);
-});
+export function listen(): void {
+  if (server.listening) return;
+  server.listen(port, "0.0.0.0", () => {
+    logger.log("info", "server.listening", { port, webDistDirectory: webDistDirectory() });
+    console.log(`Robot Radio server listening on http://0.0.0.0:${port}`);
+    if (logger.filePath) console.log(`Structured debug log: ${logger.filePath}`);
+  });
+}
+
+if (!process.env.VERCEL) listen();
+
+export default server;

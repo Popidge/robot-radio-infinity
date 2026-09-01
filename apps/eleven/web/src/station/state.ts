@@ -45,6 +45,7 @@ export function createInitialState(djMuted = false): StationState {
     intent: DEFAULT_INTENT,
     showState: DEFAULT_SHOW_STATE,
     intentRevision: 0,
+    openingImaging: { status: "none", bufferedMs: 0, generatedMs: 0 },
     nextTrack: { status: "none", bufferedMs: 0, generatedMs: 0 },
     transition: { status: "none", bufferedMs: 0, generatedMs: 0 },
     dj: { muted: djMuted, speaking: false },

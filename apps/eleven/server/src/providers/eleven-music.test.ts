@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TrackSpec, TransitionSpec } from "@robot-radio/eleven-shared";
+import { ELEVENLABS_CREDITS_EXHAUSTED_MESSAGE } from "./eleven-error";
 import { ElevenMusicApiProvider } from "./eleven-music";
 
 const originalEnvironment = { ...process.env };
@@ -112,6 +113,32 @@ describe("Eleven Music composition plans", () => {
     expect(chunk.text).not.toContain(vocalTrack.description);
     expect(chunk.positive_styles).toContain("original vocals: restrained original alto vocal");
     expect(chunk.positive_styles).toContain("vocal language: English");
+  });
+
+  it("keeps lyric-free sections instrumental inside an otherwise vocal composition", async () => {
+    const fetchMock = vi.fn(async (_input: string | URL | Request) => rejectedResponse());
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new ElevenMusicApiProvider("test-key");
+    const imaging: TrackSpec = {
+      ...instrumentalTrack,
+      id: "opening-imaging",
+      vocals: "one stylised station ident, then no further words",
+      language: "English",
+      durationMs: 30_000,
+      sections: [
+        { name: "Station ident", durationMs: 5_000, description: "One exact ident.", lyrics: "Robot Radio Infinity" },
+        { name: "Instrumental continuity", durationMs: 25_000, description: "No further vocals." }
+      ]
+    };
+
+    await expect(provider.generate(imaging, 5)).rejects.toThrow(/HTTP 422/);
+
+    const [ident, continuity] = requestBody(fetchMock).composition_plan.chunks;
+    expect(ident.text).toBe("[Station ident]\nRobot Radio Infinity");
+    expect(ident.positive_styles).toContain("original vocals: one stylised station ident, then no further words");
+    expect(continuity.text).toBe("[Instrumental continuity]\n{instrumental, no vocals}");
+    expect(continuity.positive_styles).toContain("no lead vocals");
+    expect(continuity.negative_styles).toContain("spoken words");
   });
 
   it("keeps a dry station ID free from the normal spoken-word prohibition", async () => {
@@ -232,5 +259,16 @@ describe("Eleven Music composition plans", () => {
 
     await expect(provider.generate(instrumentalTrack, 5)).rejects.toThrow(/HTTP 422/);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns clear listener copy when the API key credit limit is exhausted", async () => {
+    const fetchMock = vi.fn(async () => rejectedResponse(402, {
+      detail: { type: "payment_required", code: "insufficient_credits", message: "Not enough credits" }
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const provider = new ElevenMusicApiProvider("test-key");
+
+    await expect(provider.generate(instrumentalTrack, 5)).rejects.toThrow(ELEVENLABS_CREDITS_EXHAUSTED_MESSAGE);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

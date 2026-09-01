@@ -1,5 +1,7 @@
 {
   "name": "robot-radio-infinity",
+  "description": "A reactive AI radio station that generates and presents every track live for one listener.",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.23.0",
@@ -11,6 +13,13 @@
     "apps/*/*",
     "packages/*"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Popidge/robot-radio-infinity.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Popidge/robot-radio-infinity/issues"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs eleven",
     "dev:eleven": "node scripts/dev.mjs eleven",

@@ -22,17 +22,23 @@ OpenAI makes scoped producer decisions. Deterministic browser code decides when 
    cp apps/eleven/.env.example .env
    ```
 
-3. Start the web app and the server:
+3. Select the mock providers in `.env`:
+
+   ```text
+   PROVIDER_STACK=mock
+   ```
+
+4. Start the web app and the server:
 
    ```bash
    pnpm dev
    ```
 
-4. Open [http://localhost:5173](http://localhost:5173).
+5. Open [http://localhost:5173](http://localhost:5173).
 
-5. Enter a starting style in **What do you want to hear today?**.
+6. Enter a starting style in **What do you want to hear today?**.
 
-6. Select **Start listening**.
+7. Select **Start listening**.
 
 The mock stack uses generated PCM fixtures. It does not make external API calls.
 
@@ -60,6 +66,15 @@ ELEVENLABS_MUSIC_MODEL=music_v2
 ELEVENLABS_TTS_MODEL=eleven_flash_v2_5
 ```
 
+Profile the real DJ producer across mocked long-session timelines without generating music or TTS:
+
+```bash
+pnpm --filter @robot-radio/eleven-server profile:dj-autonomy -- --confirm-cost
+```
+
+This makes chargeable OpenAI calls only and writes a full JSON capture plus a readable Markdown report to `logs/dj-autonomy-profile-*`.
+Pass `--scenarios long_hands_off,listener_reclaims_control` to rerun a targeted subset.
+
 The default DJ voice is Blondie, a female London voice with a professional radio-announcer tone. Set `ELEVENLABS_VOICE_ID` to select another voice.
 
 You can select one adapter at a time:
@@ -75,7 +90,9 @@ Each value can also be `mock`.
 
 ## Station flow
 
-The opening message starts one OpenAI producer call. The plan contains the musical direction, first track, show memory, and optional opening cue.
+The opening message starts a fixed 30-second imaging generation and one OpenAI producer call at the same time.
+
+The imaging contains a fresh Robot Radio Infinity ident and an instrumental continuity bed. The producer plan contains the musical direction, first track, show memory, and optional opening cue.
 
 The browser starts the first Eleven Music stream. ElevenLabs MP3 stays compressed across the server and WebSocket, then a browser worker decodes it. Playback starts after the decoded stream has a safe PCM buffer.
 
@@ -185,6 +202,8 @@ Run the profiler with `--help` to see all modes.
 
 The server writes one NDJSON log for each local run. The startup output shows the absolute file path.
 
+On Vercel, the server writes structured logs to standard output. Production filesystems are not used for persistent logs.
+
 Use this procedure for a test session:
 
 1. Start the app with `pnpm dev`.
@@ -222,3 +241,15 @@ The reducer tests cover message races, bounded memory, mic windows, prepared spe
 The presentation-map tests use the retained Eleven Music corpus. These tests cover observed vocal ramps, dense vocals, instrumental beds, and false instruction timestamps.
 
 The server tests cover provider selection, structured logs, static hosting, and encoded provider pass-through. Browser tests cover streaming PCM normalization across decoder chunk boundaries.
+
+## Vercel deployment
+
+The repository root contains the Vercel Services configuration. It routes `/api` and `/stream` to the Node service and all other paths to Vite.
+
+Import `.env.example` into Vercel. Then add values for `DEMO_PASSWORD`, `OPENAI_API_KEY`, and `ELEVENLABS_API_KEY`.
+
+The server rejects all paid routes and WebSocket upgrades until the browser has a valid signed cookie.
+
+The server fails closed when Vercel does not have this password. Local development remains open when `DEMO_PASSWORD` is empty.
+
+See [the deployment guide](../../docs/deployment-vercel.md) for the environment variables, key restrictions, and production smoke test.

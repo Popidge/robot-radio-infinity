@@ -6,6 +6,7 @@
   font-family: "DM Mono", monospace;
   font-synthesis: none;
   --paper: #f2eddf;
+  --canvas: #f2eddf;
   --ink: #11100d;
   --track-primary: #ed3b2e;
   --track-secondary: #0876d1;
@@ -24,6 +25,86 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 4px 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 
 .app-shell { min-height: 100svh; }
+.access-canvas {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100vw;
+  min-height: 100svh;
+  overflow: hidden;
+  background: var(--paper);
+}
+.access-canvas::before {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto;
+  height: 8px;
+  background: repeating-linear-gradient(90deg, var(--track-primary) 0 14px, transparent 14px 20px);
+  transform: translateY(-50%);
+}
+.access-panel {
+  position: relative;
+  z-index: 2;
+  width: min(720px, calc(100vw - 48px));
+  padding: clamp(28px, 5vw, 58px);
+}
+.access-kicker {
+  margin: 0 0 22px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.access-panel h1 {
+  max-width: 620px;
+  margin: 0;
+  font: 900 clamp(3.6rem, 8.5vw, 7.4rem)/0.78 "Barlow Condensed", sans-serif;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+.access-panel > p:not(.access-kicker, .cookie-note, .access-error) {
+  max-width: 590px;
+  margin: 24px 0 0;
+  font-size: 0.78rem;
+  line-height: 1.65;
+}
+.access-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 60px;
+  margin-top: 28px;
+  border: 3px solid var(--ink);
+}
+.access-form input {
+  min-width: 0;
+  border: 0;
+  border-right: 3px solid var(--ink);
+  border-radius: 0;
+  background: transparent;
+  padding: 17px 14px;
+  outline: none;
+}
+.access-form button, .access-submit {
+  border: 0;
+  border-radius: 0;
+  background: var(--track-accent);
+  font-weight: 700;
+}
+.access-form button { font-size: 1.5rem; }
+.access-submit { margin-top: 26px; padding: 14px 18px; text-transform: uppercase; }
+.access-submit span { padding-left: 8px; }
+.cookie-note {
+  margin: 13px 0 0;
+  font-size: 0.62rem;
+  line-height: 1.5;
+}
+.access-error {
+  margin: 16px 0 0;
+  border: 2px solid var(--ink);
+  background: var(--track-primary);
+  padding: 10px 12px;
+  font-size: 0.7rem;
+  line-height: 1.45;
+}
 .radio-canvas {
   position: relative;
   isolation: isolate;
@@ -31,7 +112,7 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 4px 
   height: 100svh;
   min-height: 540px;
   overflow: hidden;
-  background: var(--paper);
+  background: var(--canvas);
   color: var(--ink);
   transition: background-color 900ms ease;
 }
@@ -66,12 +147,20 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 4px 
   inset: 0;
   z-index: 1;
   display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   place-items: center;
   overflow: hidden;
   pointer-events: none;
 }
+.lyric-fit {
+  width: max-content;
+  align-self: center;
+  justify-self: center;
+  transform: scale(var(--lyric-fit-scale, 1));
+  transform-origin: center;
+}
 .lyric-layer p {
-  width: min(1120px, 108vw);
+  width: max-content;
   margin: 0;
   color: #fff;
   font: 900 clamp(5.5rem, 14vw, 14rem)/0.72 "Barlow Condensed", sans-serif;
@@ -89,8 +178,8 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 4px 
 /* Foreground identity and title */
 .station-stamp {
   position: absolute;
-  top: 24px;
-  left: 28px;
+  right: 28px;
+  bottom: 24px;
   z-index: 8;
   display: flex;
   align-items: center;
@@ -99,6 +188,8 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 4px 
   letter-spacing: 0.19em;
   text-transform: uppercase;
 }
+.station-wordmark { display: grid; gap: 2px; line-height: 1; }
+.station-wordmark > span:last-child { color: var(--track-primary); }
 .station-wave { display: flex; align-items: center; gap: 3px; height: 30px; }
 .station-wave i { display: block; width: 3px; background: var(--ink); }
 .station-wave i:nth-child(1), .station-wave i:nth-child(5) { height: 12px; }
@@ -233,13 +324,18 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 4px 
   line-height: 0.78;
 }
 
-.control-stack {
+.dj-console {
   position: absolute;
   z-index: 12;
-  left: 244px;
+  left: 24px;
   bottom: 24px;
+  display: flex;
+  align-items: flex-end;
+  filter: drop-shadow(8px 8px 0 var(--ink));
+}
+.control-stack {
+  position: relative;
   width: clamp(420px, 42vw, 680px);
-  box-shadow: 6px 6px 0 var(--ink);
   transform-origin: left bottom;
   transition: opacity 180ms ease, transform 180ms ease, visibility 180ms;
 }
@@ -297,10 +393,9 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 4px 
 
 /* Comic DJ */
 .dj-avatar-panel {
-  position: absolute;
-  z-index: 10;
-  left: 24px;
-  bottom: 24px;
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
   width: 220px;
   height: 188px;
   overflow: hidden;
@@ -310,7 +405,6 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 4px 
   background: var(--track-accent);
   color: inherit;
   padding: 0;
-  box-shadow: 8px 8px 0 var(--ink);
   cursor: default;
   text-align: initial;
 }
@@ -471,13 +565,16 @@ pre { max-height: 92px; overflow: auto; font: 300 8px/1.45 "DM Mono", monospace;
 @media (max-width: 900px) {
   .track-title-panel { top: 43%; max-width: calc(100vw - 48px); }
   .track-title-panel.is-compact { top: 24px; right: 24px; max-width: min(420px, calc(100vw - 320px)); }
-  .control-stack { left: 189px; width: min(520px, calc(100vw - 213px)); min-width: 360px; }
+  .control-stack { width: min(520px, calc(100vw - 213px)); min-width: 360px; }
   .dj-avatar-panel { width: 165px; height: 142px; }
 }
 
 @media (max-width: 660px) {
+  .access-panel { width: calc(100vw - 32px); padding: 24px; box-shadow: 5px 5px 0 var(--ink); }
+  .access-panel h1 { font-size: clamp(3.3rem, 17vw, 5.2rem); }
+  .access-panel > p:not(.access-kicker, .cookie-note, .access-error) { font-size: 0.73rem; }
   .radio-canvas { min-height: 620px; }
-  .station-stamp { top: 17px; left: 17px; gap: 8px; font-size: 0.65rem; letter-spacing: 0.1em; }
+  .station-stamp { right: 17px; bottom: 17px; gap: 8px; font-size: 0.65rem; letter-spacing: 0.1em; }
   .station-wave { transform: scale(0.75); transform-origin: left center; margin-right: -6px; }
   .welcome-panel { width: calc(100vw - 32px); padding: 22px; box-shadow: 5px 5px 0 var(--ink); }
   .welcome-panel h1 { font-size: clamp(3.1rem, 17vw, 5.4rem); }
@@ -501,9 +598,10 @@ pre { max-height: 92px; overflow: auto; font: 300 8px/1.45 "DM Mono", monospace;
   .track-title-panel.is-compact.is-dense h1 { padding-right: 8px; font-size: clamp(2.35rem, 11vw, 3.8rem); }
   .title-size-toggle { width: 38px; height: 38px; }
   .now-playing-tag { padding: 6px 8px; font-size: 0.52rem; }
-  .lyric-layer p { width: 112vw; font-size: clamp(5.5rem, 31vw, 9.5rem); }
-  .dj-avatar-panel { left: 16px; bottom: 16px; width: 144px; height: 124px; box-shadow: 5px 5px 0 var(--ink); }
-  .control-stack { left: 16px; bottom: 140px; width: calc(100vw - 32px); min-width: 0; box-shadow: 5px 5px 0 var(--ink); }
+  .lyric-layer p { font-size: clamp(5.5rem, 31vw, 9.5rem); }
+  .dj-console { left: 16px; right: 16px; bottom: 16px; display: block; height: 124px; filter: drop-shadow(5px 5px 0 var(--ink)); }
+  .dj-avatar-panel { width: 144px; height: 124px; }
+  .control-stack { position: absolute; left: 0; bottom: 124px; width: 100%; min-width: 0; }
   .control-stack.is-hidden { transform: translateY(12px) scale(0.985); }
   .chat-panel { height: min(300px, calc(100svh - 300px)); }
   .experience-toggles { height: 31px; }

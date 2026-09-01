@@ -38,6 +38,7 @@ export interface StationDebugState {
   error?: string;
   playback: unknown;
   intent: unknown;
+  openingImaging?: unknown;
   nextTrack: unknown;
   transition: unknown;
   dj: unknown;

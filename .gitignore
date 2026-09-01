@@ -2,7 +2,9 @@ node_modules/
 dist/
 .env
 .env.local
+.vercel/
 *.log
 logs/
+coverage/
 *.tsbuildinfo
 .DS_Store

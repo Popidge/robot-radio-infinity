@@ -121,7 +121,9 @@ function requestImmediate(state: StationState, requestId = "immediate"): Station
 describe("station reducer normal lifecycles", () => {
   it("runs a complete gapless opening and hands-off track-to-track lifecycle", () => {
     const started = reduce(createInitialState(), event({ type: "START_STATION", sessionId: "session", message: "Warm synth soul." }));
-    expect(started.commands.map((command) => command.type)).toEqual(["PLAN_INITIAL_INTENT"]);
+    expect(started.commands.map((command) => command.type)).toEqual(["GENERATE_TRACK", "PLAN_INITIAL_INTENT"]);
+    const imagingSpec = commandsOfType(started.commands, "GENERATE_TRACK")[0]!.spec;
+    expect(imagingSpec.role).toBe("opening_imaging");
 
     const openingPlanned = reduce(started.state, event({
       type: "INITIAL_INTENT_RECEIVED",
@@ -133,11 +135,22 @@ describe("station reducer normal lifecycles", () => {
     const openingSpec = openingGeneration[0]!.spec;
     expect(openingSpec.programmeId).toBe("session");
 
-    const openingReady = reduce(openingPlanned.state, event({ type: "TRACK_READY", trackId: openingSpec.id, revision: openingSpec.revision }));
-    expect(openingReady.commands).toEqual([{ type: "PLAY_TRACK", trackId: openingSpec.id, durationMs: 500 }]);
-    const openingStarted = reduce(openingReady.state, event({ type: "TRACK_STARTED", trackId: openingSpec.id, revision: openingSpec.revision, spec: openingSpec }));
+    const imagingReady = reduce(openingPlanned.state, event({ type: "TRACK_READY", trackId: imagingSpec.id, revision: imagingSpec.revision }));
+    expect(imagingReady.commands).toEqual([{ type: "PLAY_TRACK", trackId: imagingSpec.id, durationMs: 250 }]);
+    const imagingStarted = reduce(imagingReady.state, event({ type: "TRACK_STARTED", trackId: imagingSpec.id, revision: imagingSpec.revision, spec: imagingSpec }));
+    expect(imagingStarted.state.playback.role).toBe("opening_imaging");
+    expect(imagingStarted.state.nextTrack.trackId).toBe(openingSpec.id);
+
+    const openingReady = reduce(imagingStarted.state, event({ type: "TRACK_READY", trackId: openingSpec.id, revision: openingSpec.revision }));
+    expect(openingReady.commands).toEqual([]);
+    const imagingHandoff = reduce(openingReady.state, event({
+      type: "TRACK_PROGRESS", trackId: imagingSpec.id, playheadMs: 26_900, remainingMs: 3_100, bufferedMs: 10_000
+    }));
+    expect(imagingHandoff.commands).toEqual([{ type: "FADE", from: "track", to: "track", trackId: openingSpec.id, durationMs: NORMAL_CROSSFADE_MS }]);
+    const openingStarted = reduce(imagingHandoff.state, event({ type: "TRACK_STARTED", trackId: openingSpec.id, revision: openingSpec.revision, spec: openingSpec }));
     expect(openingStarted.state.phase).toBe("playing");
     expect(openingStarted.state.nextTrack.status).toBe("none");
+    expect(openingStarted.state.recentTracks).toEqual([]);
 
     const horizon = reduce(openingStarted.state, event({ type: "NEXT_TRACK_HORIZON", requestId: "horizon-1", trackId: openingSpec.id }));
     expect(horizon.commands.map((command) => command.type)).toEqual(["PLAN_CONTINUITY"]);
@@ -176,6 +189,48 @@ describe("station reducer normal lifecycles", () => {
     expect(nextStarted.state.recentTracks.at(-1)?.title).toBe("Signals Through Glass");
     expect(nextStarted.state.horizonFiredForTrackId).toBeNull();
     expect(nextStarted.state.nextTrack.status).toBe("none");
+  });
+
+  it("falls through to the fully planned first track if opening imaging fails", () => {
+    const started = reduce(createInitialState(), event({ type: "START_STATION", sessionId: "fallback", message: "Warm synth soul." }));
+    const imagingSpec = commandsOfType(started.commands, "GENERATE_TRACK")[0]!.spec;
+    const failed = reduce(started.state, event({
+      type: "TRACK_GENERATION_FAILED",
+      trackId: imagingSpec.id,
+      revision: imagingSpec.revision,
+      error: "opening imaging unavailable"
+    }));
+    expect(failed.state.openingImaging.status).toBe("failed");
+    expect(failed.state.phase).not.toBe("error");
+
+    const planned = reduce(failed.state, event({
+      type: "INITIAL_INTENT_RECEIVED",
+      requestId: "fallback",
+      plan: makeProducerPlan(intent, { ...continuation, title: "Signals Through Glass" }, { suggestedTiming: "opening" })
+    }));
+    const firstTrack = commandsOfType(planned.commands, "GENERATE_TRACK")[0]!.spec;
+    const ready = reduce(planned.state, event({ type: "TRACK_READY", trackId: firstTrack.id, revision: firstTrack.revision }));
+    expect(ready.commands).toEqual([{ type: "PLAY_TRACK", trackId: firstTrack.id, durationMs: 500 }]);
+  });
+
+  it("surfaces an exhausted provider allowance instead of treating it as a repairable track prompt", () => {
+    const state = playingState();
+    const spec = compileTrackSpec("credit-limited-track", 1, continuation, intent, "credit-limit");
+    const generating: StationState = {
+      ...state,
+      nextTrack: { status: "generating", trackId: spec.id, revision: 1, spec, bufferedMs: 0, generatedMs: 0 }
+    };
+    const message = "This demo has used its current ElevenLabs allowance. It cannot make more audio until the credits reset.";
+    const failed = reduce(generating, event({
+      type: "TRACK_GENERATION_FAILED",
+      trackId: spec.id,
+      revision: 1,
+      error: message
+    }));
+
+    expect(failed.commands).toEqual([]);
+    expect(failed.state.error).toBe(message);
+    expect(failed.state.nextTrack.status).toBe("failed");
   });
 
   it("uses a matched underrun transition until the slow next track is safely playable", () => {

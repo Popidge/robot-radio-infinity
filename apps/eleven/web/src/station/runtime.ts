@@ -95,6 +95,7 @@ export class StationRuntime {
       error: this.state.error,
       playback: this.state.playback,
       intent: this.state.intent,
+      openingImaging: this.state.openingImaging,
       nextTrack: this.state.nextTrack,
       transition: this.state.transition,
       dj: this.state.dj,
@@ -406,7 +407,7 @@ export class StationRuntime {
     if (!progress || !this.state.running) return;
     this.dispatch(nowEvent({ type: "TRACK_PROGRESS", trackId: progress.trackId, playheadMs: progress.playheadMs, remainingMs: progress.remainingMs, bufferedMs: progress.bufferedMs }));
     const state = this.state;
-    if (state.playback.trackId === progress.trackId && state.phase !== "handoff" && progress.remainingMs <= NEXT_TRACK_HORIZON_MS && state.horizonFiredForTrackId !== progress.trackId) {
+    if (state.playback.trackId === progress.trackId && state.playback.role !== "opening_imaging" && state.phase !== "handoff" && progress.remainingMs <= NEXT_TRACK_HORIZON_MS && state.horizonFiredForTrackId !== progress.trackId) {
       this.dispatch(nowEvent({ type: "NEXT_TRACK_HORIZON", requestId: this.nextId("horizon"), trackId: progress.trackId }));
     }
     if (progress.remainingMs <= 0 && this.endedTrackId !== progress.trackId) {

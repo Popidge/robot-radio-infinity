@@ -26,6 +26,7 @@ function formatTime(ms: number | null): string {
 function phaseLabel(state: StationState, paused: boolean): string {
   if (paused) return "Transmission paused";
   if (!state.running) return "Waiting for a signal";
+  if (state.playback.role === "opening_imaging") return "Opening the transmission";
   if (state.startup?.status === "planning") return "Imagining your station";
   if (state.startup) return "Opening the transmission";
   if (state.dj.speaking) return "Your DJ is on the mic";
@@ -35,6 +36,9 @@ function phaseLabel(state: StationState, paused: boolean): string {
 }
 
 function listenerError(state: StationState): string {
+  if (state.error && /used its current ElevenLabs allowance|insufficient_credits|quota_exceeded/i.test(state.error)) {
+    return "This demo has used its current ElevenLabs allowance. It cannot make more audio until the credits reset.";
+  }
   return state.playback.trackId
     ? "The DJ hit a snag with that plan, but the music is still playing. Try the request again."
     : "The opening signal hit a problem. Add ?debug=1 to the address for technical detail.";
@@ -56,10 +60,11 @@ export function Player({ state, paused, onStart, onStop, onTogglePause, onMessag
   const titleDensity = state.playback.title === null ? "is-forming" : trackTitle.length > 46 ? "is-dense" : "";
   const theme = useMemo(
     () => createVisualTheme(state.playback, state.intent),
-    [state.intent, state.playback.energy, state.playback.mood, state.playback.styles, state.playback.title]
+    [state.intent, state.playback.energy, state.playback.mood, state.playback.styles, state.playback.title, state.playback.trackId]
   );
   const visualStyle = {
     "--paper": theme.paper,
+    "--canvas": theme.canvas,
     "--ink": theme.ink,
     "--track-primary": theme.primary,
     "--track-secondary": theme.secondary,
@@ -79,6 +84,7 @@ export function Player({ state, paused, onStart, onStop, onTogglePause, onMessag
     event.preventDefault();
     const trimmed = startingVibe.trim();
     if (!trimmed) return;
+    setTitleCompact(true);
     onStart(trimmed);
   }
 
@@ -96,7 +102,10 @@ export function Player({ state, paused, onStart, onStop, onTogglePause, onMessag
 
       <header className="station-stamp">
         <span className="station-wave" aria-hidden="true"><i /><i /><i /><i /><i /></span>
-        <span>Robot Radio Infinity</span>
+        <span className="station-wordmark">
+          <span>Robot Radio</span>
+          <span>Infinity</span>
+        </span>
       </header>
 
       <p className="broadcast-state sr-only" aria-live="polite">{phaseLabel(state, paused)}</p>
@@ -144,21 +153,24 @@ export function Player({ state, paused, onStart, onStop, onTogglePause, onMessag
           </div>
         </div>
       ) : (
-        <>
-          <div className={`track-title-panel comic-panel ${titleDensity} ${titleCompact ? "is-compact" : "is-featured"}`}>
-            <button
-              type="button"
-              className="title-size-toggle"
-              onClick={() => setTitleCompact((compact) => !compact)}
-              aria-label={titleCompact ? "Feature track title" : "Move track title to corner"}
-              aria-pressed={titleCompact}
-            >
-              {titleCompact ? "+" : "−"}
-            </button>
-            <h1 aria-live="polite">{trackTitle}</h1>
-            <span className="now-playing-tag">Now playing</span>
-          </div>
+        <div className={`track-title-panel comic-panel ${titleDensity} ${titleCompact ? "is-compact" : "is-featured"}`}>
+          <button
+            type="button"
+            className="title-size-toggle"
+            onClick={() => setTitleCompact((compact) => !compact)}
+            aria-label={titleCompact ? "Feature track title" : "Move track title to corner"}
+            aria-pressed={titleCompact}
+          >
+            {titleCompact ? "+" : "−"}
+          </button>
+          <h1 aria-live="polite">{trackTitle}</h1>
+          <span className="now-playing-tag">Now playing</span>
+        </div>
+      )}
 
+      <div className="dj-console">
+        <RobotDj state={state} controlsOpen={controlsOpen} onToggleControls={() => setControlsOpen((open) => !open)} />
+        {state.running ? (
           <div id="control-plane" className={`control-stack ${chatOpen ? "is-chat-open" : ""} ${controlsOpen ? "is-visible" : "is-hidden"}`}>
             <div className="experience-toggles" role="group" aria-label="Audio and visual options">
               <button type="button" className={lyricsEnabled ? "is-enabled" : ""} aria-pressed={lyricsEnabled} onClick={() => setLyricsEnabled((enabled) => !enabled)}>Lyrics</button>
@@ -209,10 +221,8 @@ export function Player({ state, paused, onStart, onStop, onTogglePause, onMessag
               <button className="end-button" onClick={onStop} aria-label="End session">×</button>
             </div>
           </div>
-        </>
-      )}
-
-      <RobotDj state={state} controlsOpen={controlsOpen} onToggleControls={() => setControlsOpen((open) => !open)} />
+        ) : null}
+      </div>
 
       {state.error ? <div className="experience-error comic-panel">{listenerError(state)}</div> : null}
     </section>

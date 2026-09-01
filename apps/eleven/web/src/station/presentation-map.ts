@@ -109,6 +109,7 @@ function endStyle(sections: TrackSection[] | undefined): TrackPresentationMap["e
   const ending = sections?.at(-1);
   const text = `${ending?.name ?? ""} ${ending?.description ?? ""}`.toLowerCase();
   if (/cold|hard stop|abrupt|precise (?:final|stop)/.test(text)) return "cold";
+  if (/(?:no|do not) fade|without (?:a )?fade/.test(text) && /resolve|clean (?:end|ending)|final (?:hit|chord)/.test(text)) return "resolved";
   if (/fade/.test(text)) return "fade";
   if (/resolve|clean (?:end|ending)|final hit/.test(text)) return "resolved";
   return "unknown";

@@ -37,7 +37,7 @@ export const trackDirectiveSchema = z.object({
 });
 
 export const trackSpecSchema = trackDirectiveSchema.extend({
-  id: z.string(), programmeId: z.string(), revision: z.number().int().nonnegative(), styles: z.array(z.string()), mood: z.array(z.string()),
+  id: z.string(), programmeId: z.string(), revision: z.number().int().nonnegative(), role: z.enum(["programme", "opening_imaging"]).optional(), styles: z.array(z.string()), mood: z.array(z.string()),
   energy: z.number().min(0).max(1), bpm: z.number().positive(), key: z.string(), durationMs: z.number().int().positive()
 });
 
@@ -124,7 +124,8 @@ export const continuityInputSchema = z.object({
   autonomy: z.object({
     mode: z.enum(["interactive", "cruise", "exploratory"]),
     tracksSinceListener: z.number().int().nonnegative(),
-    silenceMs: z.number().nonnegative()
+    silenceMs: z.number().nonnegative(),
+    speechSilenceMs: z.number().nonnegative().nullable()
   })
 });
 export const trackRepairInputSchema = z.object({
