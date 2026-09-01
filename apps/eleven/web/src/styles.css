@@ -76,6 +76,8 @@ button:focus-visible, input:focus-visible, summary:focus-visible { outline: 4px 
   color: var(--lyric-colour);
   font: 900 clamp(5.5rem, 14vw, 14rem)/0.72 "Barlow Condensed", sans-serif;
   letter-spacing: -0.025em;
+  -webkit-text-stroke: 3px rgba(255, 255, 255, 0.96);
+  paint-order: stroke fill;
   text-align: center;
   text-transform: uppercase;
   mix-blend-mode: difference;

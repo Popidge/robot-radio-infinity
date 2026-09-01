@@ -97,6 +97,15 @@ function compileHorizonTrackSpec(id: string, revision: number, directive: TrackD
   }, intent, programmeId);
 }
 
+function boundedTransitionText(value: string, maximum: number): string {
+  const normalized = value.trim();
+  if (normalized.length <= maximum) return normalized;
+  const clipped = normalized.slice(0, maximum - 1);
+  const boundary = clipped.lastIndexOf(" ");
+  const end = boundary >= maximum * 0.65 ? boundary : clipped.length;
+  return `${clipped.slice(0, end).trimEnd()}…`;
+}
+
 function compileTransitionSpec(
   id: string,
   revision: number,
@@ -109,13 +118,15 @@ function compileTransitionSpec(
   const direction = sketch?.energyDirection ?? "steady";
   const sourceEnergy = state.playback.energy ?? state.intent.energy ?? 0.55;
   const destinationEnergy = destination.energy ?? sourceEnergy;
+  const sourceSummary = sketch?.sourceSummary ?? snapshot(state).styleSummary;
+  const destinationSummary = sketch?.destinationSketch ?? destination.description;
   return {
     id,
     programmeId,
     revision,
-    description: sketch?.description ?? `An instrumental radio bridge that naturally moves from ${snapshot(state).styleSummary} toward ${destination.description}.`,
-    sourceSummary: sketch?.sourceSummary ?? snapshot(state).styleSummary,
-    destinationSummary: sketch?.destinationSketch ?? destination.description,
+    description: boundedTransitionText(sketch?.description ?? `An instrumental radio bridge that naturally moves from ${sourceSummary} toward ${destinationSummary}.`, 800),
+    sourceSummary: boundedTransitionText(sourceSummary, 500),
+    destinationSummary: boundedTransitionText(destinationSummary, 500),
     styles: [...new Set([...state.intent.styles.slice(0, 3), ...destination.styles.slice(0, 3)])].slice(0, 6),
     mood: [...new Set([...state.intent.mood.slice(0, 3), ...destination.mood.slice(0, 3)])].slice(0, 6),
     energy: direction === "up" ? Math.max(sourceEnergy, destinationEnergy) : direction === "down" ? Math.min(sourceEnergy, destinationEnergy) : (sourceEnergy + destinationEnergy) / 2,

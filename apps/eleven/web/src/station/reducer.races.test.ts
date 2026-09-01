@@ -250,6 +250,30 @@ describe("station reducer race safety", () => {
     expect(planned.state.nextTrack.spec?.programmeId).toBe("user-close");
   });
 
+  it("bounds generated transition copy when long track and intent summaries are combined", () => {
+    const longSource = "Intricate nocturnal source arrangement with patient detail and accumulated production history. ".repeat(12);
+    const longDestination = "Polished melodic destination with luminous hooks and a carefully described emotional trajectory. ".repeat(8).slice(0, 500);
+    const destination = { ...destinationIntent, description: longDestination };
+    const plan = makeProducerPlan(destination, { ...destinationTrack, description: longDestination });
+    const requested = reduce({
+      ...playingState(30_000),
+      playback: { ...playingState(30_000).playback, styleSummary: longSource }
+    }, event({ type: "USER_MESSAGE", requestId: "long-copy", message: "Take this somewhere melodic next." }));
+    const classified = reduce(requested.state, event({
+      type: "URGENCY_ASSESSMENT_RECEIVED",
+      requestId: "long-copy",
+      assessment: { timing: "next_track", interruptCurrentTrack: false, confidence: 0.98 }
+    }));
+    const planned = reduce(classified.state, event({ type: "USER_PLAN_RECEIVED", requestId: "long-copy", plan }));
+    const transition = commandsOfType(planned.commands, "GENERATE_TRANSITION")[0]?.spec;
+
+    expect(transition).toBeDefined();
+    expect(transition!.description.length).toBeLessThanOrEqual(800);
+    expect(transition!.sourceSummary.length).toBeLessThanOrEqual(500);
+    expect(transition!.destinationSummary.length).toBeLessThanOrEqual(500);
+    expect(transition!.description.endsWith("…")).toBe(true);
+  });
+
   it("ignores late audio and discards the cue from a cancelled horizon programme", () => {
     const horizonWithCue = makeProducerPlan(currentIntent, horizonTrack, {
       onAirCue: { text: "Here is the track you cancelled.", purpose: "tease" },

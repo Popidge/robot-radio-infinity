@@ -190,7 +190,10 @@ async function pipeStream(
       clientConnected: webSocket.readyState === WebSocket.OPEN
     });
   } catch (error) {
-    logger.error("stream.failed", error, {
+    const expectedCancellation = webSocket.readyState !== WebSocket.OPEN
+      && error instanceof Error
+      && error.name === "AbortError";
+    const failureContext = {
       ...context,
       elapsedMs: performance.now() - startedAt,
       firstChunkMs,
@@ -198,7 +201,9 @@ async function pipeStream(
       transportChunks,
       transportBytes,
       peakSocketBufferedBytes
-    });
+    };
+    if (expectedCancellation) logger.log("info", "stream.cancelled", failureContext);
+    else logger.error("stream.failed", error, failureContext);
     if (webSocket.readyState === WebSocket.OPEN) {
       webSocket.send(JSON.stringify({ type: "stream-error", error: logger.message(error) }));
     }
